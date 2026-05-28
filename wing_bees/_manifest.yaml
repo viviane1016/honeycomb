@@ -1,4 +1,4 @@
-scope: tool
+scope: runtime
 tool: bees
 
 # Mandatory files in every closet directory within this wing.

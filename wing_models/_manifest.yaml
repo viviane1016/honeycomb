@@ -1,12 +1,15 @@
-scope: universal
+scope: runtime
 
 mandatory_drawers:
   - closet.md
   - index.md
   - Readme.md
 
-# Model selection rubric. Migrated from legacy bees/honeycomb/wing_models/.
+# Runtime-scoped: model selection rubric and per-model prompt adaptations.
+# Sits alongside wing_bees (and future tool wings) because prompt
+# adaptations are runtime apparatus, not catalog content.
 canonical_rooms:
-  - selection
+  - selection       # which model for which job
+  - adaptation      # per-model prompt forms (Haiku vs Sonnet vs Opus phrasing)
   - benchmarks
   - cost
