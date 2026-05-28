@@ -1,0 +1,12 @@
+scope: universal
+
+mandatory_drawers:
+  - closet.md
+  - index.md
+  - Readme.md
+
+# Model selection rubric. Migrated from legacy bees/honeycomb/wing_models/.
+canonical_rooms:
+  - selection
+  - benchmarks
+  - cost

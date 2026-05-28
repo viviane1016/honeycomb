@@ -1,0 +1,24 @@
+scope: tool
+tool: bees
+
+# Mandatory files in every closet directory within this wing.
+# Taster drone validates compliance on each honeycomb release.
+mandatory_drawers:
+  - closet.md       # ≤500 char agentic summary; embedded for semantic recall
+  - index.md        # TOC of drawers in greppable form
+  - design.md       # design rationale, current-state decisions
+  - Readme.md       # human-targeted overview
+
+# Rooms expected in this wing (canonical SDLC topic set).
+# Closets within each room are project- or feature-specific.
+canonical_rooms:
+  - intent
+  - plan
+  - design
+  - spec
+  - build
+  - test
+  - verify
+  - review
+  - ship
+  - retro
