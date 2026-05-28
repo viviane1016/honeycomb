@@ -1,6 +1,8 @@
 <!--
 Hall: hall_architecture
 Scout: 2026-05-28T00:00:00Z
+tools: [bees, gh]
+languages: [python]
 -->
 
 The sapper drone runs daily on a GitHub Actions cron and files one

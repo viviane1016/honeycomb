@@ -1,5 +1,9 @@
 scope: runtime
-tool: bees
+
+# Tags inherited by every closet in this wing.
+# Individual closets may append additional tags in their frontmatter.
+default_tags:
+  tools: [bees]
 
 # Mandatory files in every closet directory within this wing.
 # Taster drone validates compliance on each honeycomb release.
