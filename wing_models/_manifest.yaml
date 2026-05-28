@@ -1,15 +1,21 @@
-scope: runtime
+scope: universal
 
 mandatory_drawers:
   - closet.md
   - index.md
   - Readme.md
 
-# Runtime-scoped: model selection rubric and per-model prompt adaptations.
-# Sits alongside wing_bees (and future tool wings) because prompt
-# adaptations are runtime apparatus, not catalog content.
+# Universal catalog of models. A model IS a tool — wing_models is
+# parallel to wing_tools, kept separate because models are
+# cross-cutting (they don't fit one activity room like test/).
+#
+# Tool-specific prompt adaptations do NOT live here. They live in
+# the tool's own runtime wing (wing_bees/.../verify with
+# tags: models=[claude-haiku-4-5], etc.). wing_models content is
+# generic model facts — what each model is, what it costs, generic
+# prompt traits (e.g. "Sonnet works well with XML tags").
 canonical_rooms:
-  - selection       # which model for which job
-  - adaptation      # per-model prompt forms (Haiku vs Sonnet vs Opus phrasing)
-  - benchmarks
-  - cost
+  - selection       # which model for which class of job (rubric)
+  - benchmarks      # measured characteristics
+  - cost            # pricing and rate limits
+  - traits          # generic prompt traits per model (XML, verbosity, etc.)
