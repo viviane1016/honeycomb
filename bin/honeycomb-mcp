@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""honeycomb-mcp — MCP stdio server exposing palace_recall over the four-level
+wing/room/closet/drawer structure (honeycomb v1.0).
+
+Speaks JSON-RPC 2.0 over stdin/stdout. Implements the minimal MCP handshake
+(`initialize`, `tools/list`, `tools/call`) needed for `claude -p --mcp-config`
+to discover and invoke the `palace_recall` and `palace_recall_semantic` tools.
+
+Server name is `honeycomb` (not `bees-honeycomb`) so it can be registered
+alongside the legacy bees-honeycomb MCP in the same Claude session for
+side-by-side validation during cutover.
+
+Configuration:
+  - HONEYCOMB_ROOT — repo root containing wing_*/. Defaults to the parent
+    directory of this binary (the honeycomb repo root).
+  - BEES_FEATURE_SLUG — when set, palace_recall writes honeycomb-trace.md
+    to .bees/<slug>/ in the working repo (preserves legacy bees integration).
+  - BEES_REPO_ROOT — used to locate .bees/<slug>/ for trace writing.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+PROTOCOL_VERSION = "2024-11-05"
+SERVER_NAME = "honeycomb"
+SERVER_VERSION = "1.0.0"
+
+_HALLS_DESCRIPTION = (
+    "Optional hall filter. Halls partition rooms by query intent — the same "
+    "set in every wing: hall_architecture (what something IS — roles, "
+    "components, system structure), hall_protocol (formats, templates, "
+    "contracts, conventions), hall_procedure (step-by-step recipes, stages, "
+    "checklists), hall_pattern (engineering practices to follow), "
+    "hall_antipattern (known landmines to avoid), hall_rubric (decision "
+    "tables and lookup references — 'which X should I pick', model-tier "
+    "guidance, tool selection)."
+)
+
+_WINGS_DESCRIPTION = (
+    "Optional wing filter. Wings: "
+    "bees (bees runtime — stages, roles, system architecture, the workflow "
+    "contract); "
+    "repo_bees (knowledge about the bees codebase itself — actors, APIs, "
+    "modules, architecture); "
+    "practices (universal good patterns across projects); "
+    "antipatterns (universal known-bad patterns); "
+    "tools (catalog of tools — git, gh, pytest); "
+    "models (catalog of models — claude family, gemma, open weights). "
+    "Forward-compat: scope/tools/models/project params accepted but not yet "
+    "wired in v1.0; they'll be active in v1.1 for targeted recall."
+)
+
+TOOL_DESCRIPTOR = {
+    "name": "palace_recall",
+    "description": (
+        "Recall closets from the honeycomb four-level structure (wing/room/"
+        "closet/drawer) via keyword scoring. Returns top-K matches with "
+        "composite `room` field (\"<room>/<closet>\") so each closet is "
+        "uniquely addressable while preserving the legacy API contract."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "wings": {"type": "array", "items": {"type": "string"}, "description": _WINGS_DESCRIPTION},
+            "halls": {"type": "array", "items": {"type": "string"}, "description": _HALLS_DESCRIPTION},
+            "top_k": {"type": "integer", "default": 3},
+            "drawer": {"type": "boolean", "default": False, "description": "When true, include the full canonical drawer content (concatenation of every drawer .md in the closet, excluding closet.md and index.md)."},
+        },
+        "required": ["query"],
+    },
+}
+
+SEMANTIC_TOOL_DESCRIPTOR = {
+    "name": "palace_recall_semantic",
+    "description": (
+        "Recall closets from the honeycomb four-level structure via vector "
+        "search. Falls back to an empty list when the index is missing or "
+        "chromadb is not installed; callers should treat as best-effort and "
+        "fall through to palace_recall (keyword) on empty. Same return "
+        "shape as palace_recall."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "wings": {"type": "array", "items": {"type": "string"}, "description": _WINGS_DESCRIPTION},
+            "halls": {"type": "array", "items": {"type": "string"}, "description": _HALLS_DESCRIPTION},
+            "top_k": {"type": "integer", "default": 3},
+        },
+        "required": ["query"],
+    },
+}
+
+
+def _repo_root() -> Path:
+    """Resolve the honeycomb repo root.
+
+    HONEYCOMB_ROOT env wins; otherwise fall back to the parent directory
+    of this binary (this binary lives at <repo>/bin/honeycomb-mcp)."""
+    raw = os.environ.get("HONEYCOMB_ROOT")
+    if raw:
+        return Path(raw)
+    return Path(__file__).resolve().parent.parent
+
+
+def _load_palace_recall():
+    sys.path.insert(0, str(_repo_root() / "lib"))
+    from honeycomb.recall import palace_recall  # type: ignore  # noqa: WPS433
+    return palace_recall
+
+
+def _load_palace_recall_semantic():
+    """Lazy import — returns None if backend can't load (chromadb missing)."""
+    sys.path.insert(0, str(_repo_root() / "lib"))
+    try:
+        from honeycomb.semantic import palace_recall_semantic  # type: ignore  # noqa: WPS433
+        return palace_recall_semantic
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# ── JSON-RPC plumbing ────────────────────────────────────────────────────────
+
+
+def _ok(req_id, result):
+    return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+
+def _err(req_id, code, message):
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
+
+
+def _handle_initialize(req_id, _params):
+    return _ok(
+        req_id,
+        {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        },
+    )
+
+
+def _handle_tools_list(req_id, _params):
+    return _ok(req_id, {"tools": [TOOL_DESCRIPTOR, SEMANTIC_TOOL_DESCRIPTOR]})
+
+
+def _bees_repo_root_for_trace() -> Path | None:
+    """Resolve the repo to write honeycomb-trace.md into.
+
+    BEES_REPO_ROOT env wins for legacy bees integration; otherwise None
+    (recall.py falls back to git rev-parse)."""
+    raw = os.environ.get("BEES_REPO_ROOT")
+    return Path(raw) if raw else None
+
+
+def _handle_tools_call(req_id, params):
+    name = (params or {}).get("name")
+    arguments = (params or {}).get("arguments") or {}
+    if "query" not in arguments:
+        return _err(req_id, -32602, "missing required argument: query")
+    root = _repo_root()
+    slug = os.environ.get("BEES_FEATURE_SLUG")
+    repo_root = _bees_repo_root_for_trace()
+
+    if name == "palace_recall":
+        try:
+            palace_recall = _load_palace_recall()
+        except Exception as e:  # noqa: BLE001
+            return _err(req_id, -32603, f"failed to load palace_recall: {e}")
+        try:
+            result = palace_recall(
+                query=arguments["query"],
+                wings=arguments.get("wings"),
+                halls=arguments.get("halls"),
+                top_k=arguments.get("top_k", 3),
+                drawer=arguments.get("drawer", False),
+                slug=slug,
+                root=root,
+                repo_root=repo_root,
+            )
+        except Exception as e:  # noqa: BLE001
+            return _err(req_id, -32603, f"palace_recall raised: {e}")
+        payload = {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+        return _ok(req_id, payload)
+
+    if name == "palace_recall_semantic":
+        fn = _load_palace_recall_semantic()
+        if fn is None:
+            payload = {"content": [{"type": "text", "text": "[]"}]}
+            return _ok(req_id, payload)
+        try:
+            result = fn(
+                query=arguments["query"],
+                wings=arguments.get("wings"),
+                halls=arguments.get("halls"),
+                top_k=arguments.get("top_k", 3),
+            )
+        except Exception:  # noqa: BLE001
+            result = []
+        payload = {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+        return _ok(req_id, payload)
+
+    return _err(req_id, -32601, f"unknown tool: {name!r}")
+
+
+_HANDLERS = {
+    "initialize": _handle_initialize,
+    "tools/list": _handle_tools_list,
+    "tools/call": _handle_tools_call,
+}
+
+
+def _dispatch(message):
+    method = message.get("method")
+    req_id = message.get("id")
+    params = message.get("params") or {}
+    if method in ("notifications/initialized", "initialized"):
+        return None
+    handler = _HANDLERS.get(method)
+    if handler is None:
+        if req_id is None:
+            return None
+        return _err(req_id, -32601, f"method not found: {method!r}")
+    return handler(req_id, params)
+
+
+def _emit(response):
+    if response is None:
+        return
+    sys.stdout.write(json.dumps(response) + "\n")
+    sys.stdout.flush()
+
+
+def main() -> int:
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return 0
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError as e:
+            _emit({"jsonrpc": "2.0", "id": None,
+                   "error": {"code": -32700, "message": f"parse error: {e}"}})
+            continue
+        try:
+            response = _dispatch(message)
+        except Exception as e:  # noqa: BLE001
+            _emit(_err(message.get("id"), -32603, f"internal error: {e}"))
+            continue
+        _emit(response)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
