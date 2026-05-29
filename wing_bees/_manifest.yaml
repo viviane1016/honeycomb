@@ -1,4 +1,5 @@
 scope: runtime
+version: 1.0.0
 default_tags:
   tools:
   - bees

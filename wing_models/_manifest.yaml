@@ -1,4 +1,5 @@
 scope: universal
+version: 1.0.0
 mandatory_drawers:
 - closet.md
 - index.md
