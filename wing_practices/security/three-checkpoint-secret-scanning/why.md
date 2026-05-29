@@ -1,0 +1,3 @@
+## Why
+
+Credentials in git (especially public GitHub) are scraped by automated key-hunters within hours. A leaked AWS key can spin up expensive compute instances. A leaked GitHub token can delete repositories. A leaked database password can exfiltrate months of data. The mental model: every credential is a target, and every place it flows (logs, configs, memory dumps) is an exposure window. Three-checkpoint scanning catches accidental inclusions before they ship: scan untrusted input before processing (zero permission to proceed if a secret is detected), scan generated output immediately after it is produced (catching any secret the processing component might have echoed), and scan any artifact before it crosses a trust boundary (the last defence before exposure).

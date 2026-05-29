@@ -1,0 +1,3 @@
+## Conventional Commits practice
+
+The anatomy: the first line is the summary—type, scope, and imperative description. Type classifies (feat=new feature, fix=bugfix, refactor=internals, docs=documentation, test=test-only, chore=build scripts / deps, ci=CI config, perf=performance, style=formatting, revert=undoes a prior commit). Scope is the subsystem (auth, database, ui, api). The body explains the *why*—constraints, trade-offs, incidents this fixes. The footer links to issues and marks breaking changes. Tooling parses the type to auto-generate changelogs, compute semantic versions, and filter commit history by category. Without this structure, the commit log is noise; with it, it's a queryable record.

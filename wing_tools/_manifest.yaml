@@ -1,14 +1,9 @@
 scope: universal
-
 mandatory_drawers:
-  - closet.md
-  - index.md
-  - Readme.md
-
-# Rooms organised by the activity the tool supports.
-# Closets within each room describe specific tools.
+- closet.md
+- index.md
 canonical_rooms:
-  - test         # pytest, lcov, gcov, etc.
-  - build        # make, npm, cargo, etc.
-  - ship         # gh, git, release tooling
-  - observability # logging, metrics, tracing tools
+- test
+- build
+- ship
+- observability

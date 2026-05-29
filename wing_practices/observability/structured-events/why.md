@@ -1,0 +1,3 @@
+## Why
+
+Systems without observability are impossible to debug. When an incident happens—a job timeouts, a build fails, a deployment stalls—you have no record of what happened unless you add verbose logging after the fact. Structured events (JSONL, not prose logs) are queryable—you can aggregate, filter, correlate by ID. Bees' own `emit_event` swallows exceptions so observability never breaks the pipeline: if writing to `~/.bees/events.log` fails (disk full, permission error), the bees process continues—the event might be lost, but the pipeline is not blocked. This inverts the naive approach where logging failures crash the app; instead, observability is a side effect that can't break the core.

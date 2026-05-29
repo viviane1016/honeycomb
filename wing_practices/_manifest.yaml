@@ -1,24 +1,19 @@
 scope: universal
-
 mandatory_drawers:
-  - closet.md
-  - index.md
-  - Readme.md
-
-# Universal SDLC topic anchors. Each closet describes a good pattern
-# applicable across projects.
+- closet.md
+- index.md
 canonical_rooms:
-  - intent
-  - plan
-  - design
-  - spec
-  - build
-  - test
-  - verify
-  - review
-  - ship
-  - retro
-  - security
-  - performance
-  - migration
-  - observability
+- intent
+- plan
+- design
+- spec
+- build
+- test
+- verify
+- review
+- ship
+- retro
+- security
+- performance
+- migration
+- observability

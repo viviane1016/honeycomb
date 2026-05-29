@@ -1,0 +1,1 @@
+antipattern-plaintext-credentials

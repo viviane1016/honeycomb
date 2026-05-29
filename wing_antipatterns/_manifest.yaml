@@ -1,24 +1,8 @@
 scope: universal
-
 mandatory_drawers:
-  - closet.md
-  - index.md
-  - Readme.md
-
-# Universal anti-pattern rooms (same topic anchors as wing_practices).
-# Each closet describes a known-bad pattern and what to do instead.
+- closet.md
+- index.md
 canonical_rooms:
-  - intent
-  - plan
-  - design
-  - spec
-  - build
-  - test
-  - verify
-  - review
-  - ship
-  - retro
-  - security
-  - performance
-  - migration
-  - observability
+- design
+- security
+- test

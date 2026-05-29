@@ -1,0 +1,3 @@
+## Why
+
+Docs decay when code changes aren't reflected in them. A new feature ships, the engineer forgets to update the README, and six months later the docs describe the old behaviour. Operators following the docs get confused or file bugs against behaviour that shipped. By requiring a docs-update spec as part of the work breakdown, the scribe is forced to think about what changed from the user's perspective, and the spec writer is forced to update the docs in the same PR. This is not about perfection—docs will still need refinement—but it ensures that at the moment of merge, the docs describe what the code does.

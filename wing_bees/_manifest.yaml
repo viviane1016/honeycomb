@@ -1,28 +1,22 @@
 scope: runtime
-
-# Tags inherited by every closet in this wing.
-# Individual closets may append additional tags in their frontmatter.
 default_tags:
-  tools: [bees]
-
-# Mandatory files in every closet directory within this wing.
-# Taster drone validates compliance on each honeycomb release.
+  tools:
+  - bees
 mandatory_drawers:
-  - closet.md       # ≤500 char agentic summary; embedded for semantic recall
-  - index.md        # TOC of drawers in greppable form
-  - design.md       # design rationale, current-state decisions
-  - Readme.md       # human-targeted overview
-
-# Rooms expected in this wing (canonical SDLC topic set).
-# Closets within each room are project- or feature-specific.
+- closet.md
+- index.md
 canonical_rooms:
-  - intent
-  - plan
-  - design
-  - spec
-  - build
-  - test
-  - verify
-  - review
-  - ship
-  - retro
+- intent
+- plan
+- design
+- spec
+- build
+- test
+- verify
+- review
+- ship
+- retro
+- debug
+- runtime
+- orchestrate
+- actions

@@ -1,0 +1,3 @@
+## Why this matters
+
+Bees dispatch tasks across multiple stages and multiple LLM invocations. Each stage ingests output from the prior stage (queen's briefing → queen's plan → scribe's specs → builder's implementations → commits). Untrusted input at one stage could include malicious or confused directives attempting to hijack the next stage's instructions. The four invariants establish clear trust boundaries: external data is marked as data, core instructions remain out of reach of injected content, output is machine-parseable for retry and validation, and the queen is explicitly instructed to treat suspicious input as inert.

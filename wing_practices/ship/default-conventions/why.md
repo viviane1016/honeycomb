@@ -1,0 +1,3 @@
+## Why
+
+Consistency in branch naming and commit messages makes tooling work: GitHub's PR dashboards show badges for conventional commits; CI pipelines filter on commit type; release notes are auto-generated from feat/fix/breaking-change commits. Without defaults, each team invents their own, and the onboarding cost rises. The queen-file is the escape hatch—repos with established conventions that predate honeycomb can record their overrides rather than conforming to defaults. This is not a restriction (honeycomb is advisory, not enforced); it's a documentation mechanism so the next operator knows what the local standard is.

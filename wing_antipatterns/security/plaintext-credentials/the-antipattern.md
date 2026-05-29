@@ -1,0 +1,3 @@
+## The antipattern
+
+The shape: a developer checks a `config.json` or `.env` file into git containing database passwords, API keys, or AWS credentials. The reasoning is convenient—"I'll just commit it for now, we'll rotate it later"—but "later" never comes, and the file persists in git history. Even if deleted in a later commit, it's still in `git log` and in any forks or mirrors. A key-scraper bot scans GitHub for patterns matching `AKIA` (AWS key ID prefix), `sk-` (OpenAI key), `ghp_` (GitHub token), etc., and claims them within hours. The attacker then uses the credential to spin up EC2 instances, exfiltrate data, or delete repositories. The incident response is expensive: revoke the credential, scan for abuse, understand what was accessed, notify stakeholders.

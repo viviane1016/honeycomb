@@ -1,0 +1,3 @@
+## Behaviour
+
+When a stage fails, debug can be invoked. The queen reads the failure logs, the plan, specs, and any builder output to diagnose the problem. She proposes actions in `.bees/<slug>/proposed-actions.md`, structured by category. Inline fixes are single-file, single-line changes with a clear test. Larger fixes trigger escalate-to-plan, which invokes a fresh plan stage with the debug report as briefing. Git-tracked actions (BACKLOG/queen-file/petitions) flow through normal PR review. Non-git actions (issue filing) gate on operator approval. The queen-file's `inline_fix_policy` field governs debug autonomy: `confirm-each` (default) means operator approves inline fixes before bees applies; `fix-then-notify` lets bees apply and report afterward.

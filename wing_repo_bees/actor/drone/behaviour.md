@@ -1,0 +1,7 @@
+## Behaviour
+
+A drone is defined by a `.github/workflows/<drone>.yml` paired with a `role-drone-<name>.md` room that documents its specific authority, inputs, and outputs. Drones run in the GitHub Actions runner — stateless between runs, isolated from bees CLI state, and triggered by workflow events such as `release: published` or `workflow_dispatch`. They inherit no in-flight bees pipeline context; each run is self-contained.
+
+Drones operate under a two-tier authority model. The first tier — the cleanup pass — allows direct commits to `main` for operations that are verifiably idempotent: closing an already-closed issue is a no-op, striking an already-struck BACKLOG item is a no-op. The drone must verify state before mutating. The second tier — the proposal pass — covers anything generative or forward-looking (a release map, a backlog refactor, a drafted issue). All second-tier work goes through a PR labeled with the drone's name and lives under operator review before landing.
+
+Drones need broader tool access than builders. They legitimately use `git push`, `git checkout`, `git branch`, and broader `gh` subcommands for filing PRs, closing issues, and writing to the step summary. Any drone author who adds to this baseline must justify the addition in `role-drone-<name>.md`. The failure-mode contract is cleanup-soft, PR-soft: if the cleanup commits land but `gh pr create` then fails, the workflow writes the unfiled diff to `$GITHUB_STEP_SUMMARY` and exits 0. The operator re-triggers via `workflow_dispatch`. Retry loops are out of scope.

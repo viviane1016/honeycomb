@@ -1,19 +1,13 @@
 scope: project
 project: bees
-
 mandatory_drawers:
-  - closet.md
-  - index.md
-  - design.md
-  - Readme.md
-
-# Rooms expected in a wing_repo_<project> wing.
-# Captures codebase knowledge an agent needs when modifying the project.
+- closet.md
+- index.md
 canonical_rooms:
-  - actor          # first-class objects/agents (queen, scribe, builder, drone)
-  - api            # CLI, MCP tools, Python API
-  - module         # codebase structural units
-  - dependency     # external libraries, services
-  - architecture   # system shape, key decisions
-  - release-process
-  - onboarding
+- actor
+- api
+- module
+- dependency
+- architecture
+- release-process
+- onboarding

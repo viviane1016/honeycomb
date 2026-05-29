@@ -1,0 +1,3 @@
+## Standalone `bees accept` subcommand
+
+The `bees accept <slug> [--base BRANCH] [--timeout SEC] [--effort LEVEL] [--model MODEL]` subcommand invokes queen-accept outside of ship, enabling the operator to re-run acceptance verification after manual patches or spec revisions. Inputs and outputs match the ship-internal flow: reads the annotated briefing, plan, all specs, and the feature diff; emits APPROVE or CONCERNS to `~/.bees/events.log` and stdout. The model defaults to `claude-opus-4-7`; `--model` overrides. Useful for iterative acceptance workflows where the operator wants to verify a change before final ship.

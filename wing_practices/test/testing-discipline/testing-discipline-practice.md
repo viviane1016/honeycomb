@@ -1,0 +1,3 @@
+## Testing discipline practice
+
+The rhythm: write the test first. This forces you to specify behaviour before implementation. Integration tests (hitting real APIs, real databases, real file I/O) are the source of truth—they're slow and stateful, so you can't run them in a tight loop, but they catch the bugs that unit tests miss. Unit tests with mocks are companions, not replacements: they verify error handling and edge cases, but only after the integration test proves the happy path works. When a real system changes (a third-party API adds a field, a library upgrades), mocks don't tell you about it; integration tests do—and they fail, alerting you to the gap.

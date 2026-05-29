@@ -1,0 +1,9 @@
+## Scribe-only execution
+
+Work units tagged `[scribe-only:<model>]` in the plan execute serially in transient cells within the spec stage itself, bypassing builder dispatch. The scribe receives the spec body (same as builders), applies file changes directly (Edit, Write, narrowed git/pytest tools), and commits the result in one cell-local commit. Dispatch skips these units entirely; they are already landed on the feature branch. Resume detection on a second `bees spec` invocation consults `feat/<slug>` for `bees scribe-only: <slug> NNN —` commits in addition to disk-present spec files, so already-merged scribe-only units are skipped rather than re-launched.
+
+**Execution flow:** For each scribe-only spec, create a transient cell worktree, run the scribe within it with a specialised `SCRIBE_ONLY_SYSTEM` prompt that instructs the scribe to modify files and commit, then FF-merge back to `feat/<slug>` and clean up. Queen review is **skipped** — the scribe is treated as editorial authority on docs and housekeeping changes. Secret-scan still applies at the spec draft boundary (before cell execution) and commit boundary (after merge).
+
+**Tradeoff:** Skipping queen review buys fast turnaround for purely editorial work (docs-update specs, housekeeping). Cost: scribe-only specs cannot reference code added later by builder specs in the same plan — any such dependency must be explicit in the plan's dependency graph, serialising the units. Typical use: scribe-only units are final (docs) or early (setup); mutual dependencies within the scribe-only set are disallowed.
+
+**Event stream:** Scribe-only execution emits `spec → scribe_only_started`, `spec → scribe_only_progress` (per file written), `spec → scribe_only_success` or `failure`, and participates in the aggregate `spec → success` roll-up like any other scribe.

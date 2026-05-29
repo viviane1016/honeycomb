@@ -1,0 +1,12 @@
+## Behaviour
+
+The queen is dispatched as a fresh subprocess running the highest-tier model (Opus 4.7 in current deployment). She runs five stages:
+
+- **Plan** — reads the user's briefing (wrapped in fenced markers, capped at 64 KiB), calls `palace_recall` to fetch guidance from honeycomb and the queen-file, and produces `.bees/<slug>/plan.md` with work breakdown, context, delivery estimates, and per-item builder-bee model recommendations.
+- **Review** (within spec stage) — receives the plan and N draft specs from parallel scribes, emits per-NNN APPROVE or REWRITE blocks. REWRITE bodies fully replace drafts; APPROVE keeps drafts as-is. Failure (parse, rewrite-validation, secret) aborts the spec stage with no files written.
+- **Accept** (within ship stage) — receives the annotated briefing (including `## Operator amendments`), the plan (especially `## Acceptance`), all spec texts, and the full feature diff (`feat/<slug>` against base). Emits `APPROVE` (one-line summary) or `CONCERNS` (numbered list, each citing a plan/spec section). The accept output is advisory to the operator — it does not block ship. Invoked inside `bees ship` between the pytest gate and `gh pr create`, or standalone via `bees accept <slug>`.
+- **Retro** — reflects on a completed feature, reviews what worked and what didn't, and produces a narrative report plus `.bees/<slug>/proposed-actions.md` with backlog items, queen-file updates, and petitions to amend honeycomb (capped at ≤3 petitions).
+- **Debug** — analyzes a failed or stalled feature, emits proposed actions including inline fixes (authority governed by queen-file policy), or escalates to a fresh plan or scout stage.
+- **Conflict diagnosis** (post-dispatch reactive) — When `ff_merge()` returns False inside a wave, the dispatcher invokes the queen with the failed diff, sibling commits, and spec body; she emits a plain-text diagnosis. See `arch-ff-merge` for the full flow.
+
+She has access to read-only tools (Read, Grep, Glob) and the `palace_recall` tool. She cannot edit code or run tests; that's builders' work.

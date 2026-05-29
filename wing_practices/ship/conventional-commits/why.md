@@ -1,0 +1,3 @@
+## Why
+
+Commit logs are read by humans and machines. A machine needs structure to answer "which commits bump the major version?" (those with BREAKING CHANGE:). A human reading the log six months later needs context: "why was this optimized? what was the before/after?" A conventional message answers both. The format is so widely used that GitHub, GitLab, and other platforms have built-in support for parsing and displaying it—merged PRs show badges for "🚀 feat", "🐛 fix", "⚠ BREAKING". Bees adopts this convention for its own commits and expects specs to provide messages in this format so that builders can produce consistent commits.

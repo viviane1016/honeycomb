@@ -1,0 +1,9 @@
+## Behaviour
+
+Each scribe runs as a fresh `claude -p` subprocess; the model is resolved per work-breakdown item via `cli_override > [scribe:<m>] tag > default (claude-opus-4-7)`. She receives the approved plan and a single work-breakdown item (NNN and its title). Her job is one concrete spec for one concrete item: detailed enough for a builder to implement without asking questions, but focused narrowly on that one unit.
+
+She inherits the queen's `honeycomb-trace.md` and can reuse the queen's recalls unless her unit's context requires additional retrieval. She emits exactly one fenced block `<<<SPEC NNN-task>>>…<<<END SPEC>>>` with these required sections: Builder model, Goal, Scope, Failing test, Builder prompt, Success check, Commit message. Prose outside fences is discarded.
+
+Spec bodies are held in memory by the bees harness. The queen reviews them all together for per-spec quality (clarity, completeness, builder-implementability) and cross-spec consistency (no two specs conflicting on the same file, shared symbols named consistently, ordering correct) before any file is written.
+
+The scribe also runs as a one-off `claude -p` subprocess in Verify mode, invoked after a builder completes a spec. In this mode she receives the spec body and the builder's git diff (instead of a plan and a work-breakdown unit) and evaluates whether the diff satisfies the spec. Her output is exactly `APPROVE <NNN>` or `REJECT <NNN>` followed by a specific reason — citing the failing scope item, symbol, test condition, or other spec requirement. She evaluates the diff, she does not re-implement: ambiguity in whether the diff satisfies the spec is itself grounds to REJECT. Verify mode runs automatically inside `dispatch._run_one_spec` after each builder commit; on REJECT the scribe also performs a single spec-revision pass before a second builder attempt.
