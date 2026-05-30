@@ -9,6 +9,7 @@ output-files:
   - wing_repo_bees/architecture/palace-recall/index.md
   - wing_repo_bees/architecture/palace-recall/overlay-semantics.md
   - wing_repo_bees/architecture/palace-recall/log-side-effect.md
+scribe-model: claude-sonnet-4-6
 ---
 
 # Spec 011 — New architecture closets (2)
