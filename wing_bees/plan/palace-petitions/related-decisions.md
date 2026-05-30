@@ -1,5 +1,5 @@
 ## Related decisions
 
-- ADR-0006: Honeycomb is read-only at runtime
-- ADR-0007: Petitions provide a structured channel for queen feedback on honeycomb gaps
-- ADR-0015: Operator-approved petitions are queued for editorial inclusion
+- ADR-0001: MCP-mediated queenfile, petition flow, and single-API access (intent; mechanism superseded by ADR-0002)
+- ADR-0002: Drawer overrides with scope-keyed semantic indexes (petitions ARE override files)
+- ADR-0004: MCP observability and actor-identity logging (petition tool calls are logged)

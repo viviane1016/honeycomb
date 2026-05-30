@@ -1,9 +1,19 @@
-## Parser and emitter
+## Parser and emitter (v1.1)
 
-The petition parser is `parse_palace_proposal_blocks` in `lib/bees/plan.py`. It scans queen output for the three opener shapes and returns `list[dict]` with discriminator `shape` ∈ `{single, bundle}`. Single dicts carry `path`, `kind` (`amendment`|`new-room`), `body`; bundle dicts carry `constituents: list[{path, kind, body}]` and a top-level `paths` convenience list. Both shapes carry an optional `adr` key.
+### v1.1 path (primary)
 
-Artifacts are written to `.bees/<slug>/petitions/`:
-- Single: `NNN-<room-basename>.md`
-- Bundle: `NNN-bundle-<first-room-stem>.md`
+`palace_petition_submit` MCP tool is the direct submission path from honeycomb v1.1. The MCP server (`bin/honeycomb-mcp`) writes the override file, opens the PR via `gh`, and returns `{petition_id, branch, pr_url}`. No client-side parsing required. See `wing_bees/plan/petitions-flow/mcp-tool-emission` for full tool contracts.
 
-Secret-pattern scan applies to the full body before writing. A hit writes `<filename>.suspect` and flags on stderr; the operator must review before merging.
+### Legacy translation path (one-release backwards-compat window)
+
+`parse_palace_proposal_blocks` in `lib/bees/plan.py` still scans queen output for `<<<PALACE PROPOSAL>>>` blocks during the bees-excise cutover release. On detection:
+
+1. Emits a one-line deprecation warning to stderr: `[petition] <<<PALACE PROPOSAL>>> blocks deprecated — update queen prompts to call palace_petition_submit`.
+2. Translates each block to a `palace_petition_submit` call. Behaviour is identical post-translation.
+3. Writes artifact to `.bees/<slug>/petitions/` (same layout as v1.0 for operator familiarity).
+
+Block parsing is removed in the release **following** bees-excise. Queens must use the MCP tool.
+
+### Artifacts (legacy format)
+
+`.bees/<slug>/petitions/NNN-<room-basename>.md` (single petition), `NNN-bundle-<first-room-stem>.md` (bundle). Secret-pattern scan applies to the full body before writing; a hit writes `<filename>.suspect` and flags on stderr.
