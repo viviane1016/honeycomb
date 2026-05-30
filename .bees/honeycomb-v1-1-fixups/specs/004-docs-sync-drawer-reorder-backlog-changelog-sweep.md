@@ -11,6 +11,7 @@ output-files:
   - BACKLOG.md
   - CHANGELOG.md
   - VERSION
+scribe-model: claude-sonnet-4-6
 ---
 
 # Spec 004 — Docs sync, drawer reorder, BACKLOG/CHANGELOG sweep
