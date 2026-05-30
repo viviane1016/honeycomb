@@ -259,40 +259,143 @@ reduces to mechanical deletion:
 
 ## Sequencing
 
-1. **honeycomb-mcp-queenfile (this ADR's main feature):**
-   - Implement `palace_petition_submit`, `palace_petition_list` MCP tools
-   - Extend `lib/honeycomb/recall.py` to consume the queenfile
-   - Extend `lib/honeycomb/semantic.py` similarly
-   - Adoption detection (heuristic #1: content-hash match) in install
-     script
-   - Queenfile schema documentation + format validation
-   - Ships as honeycomb v1.1.0
-2. **bees-excise:**
-   - Wire `_compose_appended_prompt` through `palace_recall`
-   - Wire petition parser through `palace_petition_submit`
-   - Delete legacy MCP infra + corpus
-   - Ships as the next bees minor version
+### Phase 1 — honeycomb v1.1.0 (must ship first)
 
-## Open questions (to resolve before status → Accepted)
+| # | Item |
+|---|---|
+| H1 | Resolve the five open questions below (status → Accepted) |
+| H2 | `palace_petition_submit` MCP tool |
+| H3 | `palace_petition_list` MCP tool |
+| H4 | Queenfile schema + parser (`lib/honeycomb/queenfile.py`) |
+| H5 | Queenfile-aware recall — extend `lib/honeycomb/recall.py` and `lib/honeycomb/semantic.py` to merge pending petitions into results |
+| H6 | Adoption detection in install script (manual MVP + content-hash auto-detect) |
+| H7 | New + updated honeycomb content for v1.1 concepts (~9 closets) |
+| H8 | Ship as honeycomb v1.1.0; bees install.sh pin bumped |
 
-1. **Queenfile location authority.** The MCP server needs
-   `$BEES_REPO_ROOT/.bees/queen.md` write permission. Is this exposed
-   via `BEES_REPO_ROOT` env (already passed) or via a separate
-   `BEES_QUEENFILE_PATH` for flexibility?
-2. **Petition target granularity.** Today's petition targets a room
-   (flat). Post-MCP, does it target a *closet* (the new addressable
-   unit), or stay room-level with the MCP choosing the closet?
-   Closet-level is more precise but requires queens to know the
-   four-level structure; room-level keeps queen prompts simple.
-3. **Backwards compatibility for `<<<PALACE PROPOSAL>>>` blocks.** Do
-   queens emit the new tool call directly, or do we keep the
-   block-emission protocol and have bees parse + translate? One
-   release of overlap, or hard cut?
-4. **Adoption heuristic #1 robustness.** Operators routinely edit
-   pending content; a strict hash match will mark them never-adopted.
-   Loose match (token overlap > 80%) is fuzzy. Worth deferring to
-   heuristic #2 (PR-link tracking) before promoting to default?
-5. **Multi-consumer queenfile model.** A single MCP server may serve
-   multiple consumer repos. Does each consumer have its own queenfile?
-   How does the server discover them — env vars per invocation,
-   registry file, prompt context?
+### Phase 2 — bees-excise (consumes v1.1)
+
+| # | Item |
+|---|---|
+| B1 | Rewire `_compose_appended_prompt` through `from honeycomb.recall import palace_recall` |
+| B2 | Rewire petition parser to invoke `palace_petition_submit` instead of writing to `bees/honeycomb/` |
+| B3 | Delete `bin/bees_honeycomb_mcp`, `lib/bees/bees_honeycomb.py`, `lib/bees/hc_index.py`, `tools/hc_index.py`, `tools/install_honeycomb.sh` |
+| B4 | Delete `bees/honeycomb/` directory |
+| B5 | Delete `LEGACY_HONEYCOMB_ROOT`; `read_honeycomb_version` reads from `~/.honeycomb/VERSION` |
+| B6 | Update tests (drop legacy-targeting tests, fix path assertions) |
+| B7 | Update docs (CLAUDE.md, SKILL.md, README.md — drop legacy / deprecation-window mentions) |
+| B8 | Ship as next bees minor version |
+
+### H7 — content breakdown
+
+| Closet | Status | Path |
+|---|---|---|
+| Petition flow | new | `wing_bees/plan/petitions-flow/` |
+| Queenfile contract | new | `wing_bees/plan/queenfile-contract/` |
+| MCP-mediated access pattern | new | `wing_repo_bees/architecture/honeycomb-access/` |
+| Surveyor bee | new | `wing_repo_bees/actor/surveyor/` |
+| Honeycomb stewards (scout / surveyor / auditor trio) | new | `wing_repo_bees/actor/honeycomb-stewards/` |
+| `palace_recall` (include_pending semantics) | update | `wing_repo_bees/architecture/palace-recall/` |
+| Petitions-format (block→tool migration, backward-compat window) | update | `wing_bees/plan/palace-petitions/` |
+| Role-queen (surveyor invocation, petition-aware recall) | update | `wing_repo_bees/actor/role-queen/` |
+| Role-scribe (pending-petition awareness) | update | `wing_repo_bees/actor/scribe-model-tiers/` |
+
+H7 is scoped to v1.1-specific concepts. Broader hand-curation of the
+Haiku-derived v1.0 closets is a separate effort that does not gate
+this release.
+
+## Open questions — proposed resolutions
+
+### Q1 — Queenfile location authority
+
+**Decision:** Derive queenfile path from `$BEES_REPO_ROOT/.bees/queen.md`.
+The MCP server is already passed `BEES_REPO_ROOT` at launch; no new env
+var. Tests override via parameter (`queenfile_root=tmp_path`) the same
+way `_compose_appended_prompt` does today.
+
+**Rationale:** Single source of truth for "which consumer is this
+MCP serving." Adding `BEES_QUEENFILE_PATH` would create two
+configuration surfaces with no concrete use case; the test-override
+parameter handles the only need that's been identified.
+
+### Q2 — Petition target granularity
+
+**Decision:** Accept **both** room-level and closet-level targets.
+Closet-level preferred when the queen knows where the content belongs;
+room-level when she doesn't. When given a room target, the MCP server
+classifies (same logic as migration) and writes into the chosen closet.
+
+The petition record stores whichever target the queen submitted plus
+the resolved closet path so adoption detection can compare against
+the final location.
+
+**Rationale:** Queens have varying mental models of the four-level
+structure. Forcing closet-level would push the burden of "where does
+this belong" into prompt-engineering and queen-side reasoning. Forcing
+room-level would discard the precision queens *do* have when they
+know. Accepting both, with classifier fallback, is the lowest-friction
+shape.
+
+### Q3 — Backwards compatibility for `<<<PALACE PROPOSAL>>>` blocks
+
+**Decision:** **One-release overlap.** During the bees-excise release:
+- Bees accepts both `<<<PALACE PROPOSAL>>>` blocks (legacy format) and
+  `palace_petition_submit` MCP tool calls.
+- Block-format petitions are translated at parse time into
+  `palace_petition_submit` calls. Behavior is identical post-translation.
+- The block format emits a one-line deprecation warning when parsed.
+
+In the release **after** bees-excise:
+- Block parsing is removed entirely.
+- Queens must use the MCP tool call.
+
+**Rationale:** Queens running on older queen prompts continue to
+function for one release while operators update prompts. The
+translation layer is trivial (parse block, call tool). Hard cut would
+break in-flight features mid-cutover.
+
+### Q4 — Adoption detection
+
+**Decision:** **Three-tier escalation, manual is the floor.**
+
+1. **Manual (always available, always authoritative)** — operator
+   command `bees petition adopt <petition_id>` or `bees petition
+   reject <petition_id>` marks the entry in the queenfile.
+2. **Content-hash exact match (automatic, best-effort)** — on install,
+   for each pending petition, normalised-hash the petition content
+   and look for an identical hash at the petition's resolved closet
+   path. Exact match → auto-mark adopted. No partial-credit matching.
+3. **PR-link tracking (future, post-v1.1)** — when `palace_petition_submit`
+   gains the auto-PR capability, store the PR URL; on install, check
+   the PR's merge state. Replaces #2 as the default automation path
+   once available.
+
+Tier #2 handles the trivial case (operator merges petition as-is)
+without false positives. Tier #1 is always available for the edited
+case. Tier #3 is the eventual robust automation.
+
+**Rationale:** Fuzzy hash matching (token overlap >80%) creates false
+positives — operator-edited content that doesn't match the original
+petition still triggers adoption. False positives silently delete
+in-flight work. Exact match has zero false positives by design;
+operator handles the rest manually.
+
+### Q5 — Multi-consumer queenfile model
+
+**Decision:** **Single consumer per MCP invocation.** Each
+`palace_recall` / `palace_petition_*` call resolves the queenfile from
+the launching `BEES_REPO_ROOT`. Multiple consumers means multiple MCP
+invocations, each with its own env block and queenfile.
+
+**Rationale:** Today's bees model already launches one MCP per stage
+per consumer feature (`_build_honeycomb_mcp_config(slug, repo_root)`).
+There is no daemon-per-host shared-MCP setup in flight. A future
+shared-daemon model would need a consumer-registry mechanism; capture
+that need when it lands, not speculatively.
+
+---
+
+## Status update
+
+With Q1–Q5 resolved as above, ADR-0001 status moves to **Accepted**
+upon operator confirmation. Phase 1 (honeycomb v1.1.0) becomes ready
+for plan-stage briefing.
