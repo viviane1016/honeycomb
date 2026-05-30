@@ -8,6 +8,7 @@ output-files:
   - wing_bees/_manifest.yaml
   - decisions/INDEX.md
   - BACKLOG.md
+scribe-model: claude-sonnet-4-6
 ---
 
 # Spec 013 — Docs + version bump + decisions index + backlog
