@@ -15,13 +15,26 @@ Configuration:
     directory of this binary (the honeycomb repo root).
   - BEES_FEATURE_SLUG — when set, palace_recall writes honeycomb-trace.md
     to .bees/<slug>/ in the working repo (preserves legacy bees integration).
-  - BEES_REPO_ROOT — used to locate .bees/<slug>/ for trace writing.
+  - BEES_REPO_ROOT — used to locate .bees/<slug>/ for trace writing and for
+    the observability log path ($BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl).
+    Falls back to $HONEYCOMB_ROOT/.calls.jsonl when unset.
+  - BEES_ACTOR — actor identity written into each log record (default "unknown").
+  - BEES_STAGE — workflow stage written into each log record (default "unknown").
+  - BEES_MODEL — model id written into each log record (default "unknown").
+
+Observability:
+  Every palace_recall and palace_recall_semantic call appends one JSONL record
+  to $BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl (dev fallback:
+  $HONEYCOMB_ROOT/.calls.jsonl). Logging failures are swallowed so a broken
+  log destination never prevents the MCP response from being returned.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -59,7 +72,10 @@ TOOL_DESCRIPTOR = {
         "Recall closets from the honeycomb four-level structure (wing/room/"
         "closet/drawer) via keyword scoring. Returns top-K matches with "
         "composite `room` field (\"<room>/<closet>\") so each closet is "
-        "uniquely addressable while preserving the legacy API contract."
+        "uniquely addressable while preserving the legacy API contract. "
+        "Each call appends one JSONL record to "
+        "$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl "
+        "(honeycomb v1.1 observability)."
     ),
     "inputSchema": {
         "type": "object",
@@ -81,7 +97,10 @@ SEMANTIC_TOOL_DESCRIPTOR = {
         "search. Falls back to an empty list when the index is missing or "
         "chromadb is not installed; callers should treat as best-effort and "
         "fall through to palace_recall (keyword) on empty. Same return "
-        "shape as palace_recall."
+        "shape as palace_recall. "
+        "Each call appends one JSONL record to "
+        "$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl "
+        "(honeycomb v1.1 observability)."
     ),
     "inputSchema": {
         "type": "object",
@@ -123,6 +142,16 @@ def _load_palace_recall_semantic():
         return None
 
 
+def _load_log_writer():
+    """Lazy import — returns write_call_record or None if import fails."""
+    sys.path.insert(0, str(_repo_root() / "lib"))
+    try:
+        from honeycomb.log import write_call_record  # type: ignore  # noqa: WPS433
+        return write_call_record
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ── JSON-RPC plumbing ────────────────────────────────────────────────────────
 
 
@@ -158,6 +187,15 @@ def _bees_repo_root_for_trace() -> Path | None:
     return Path(raw) if raw else None
 
 
+def _emit_log(name, arguments, response_meta, duration_ms):
+    writer = _load_log_writer()
+    if writer is not None:
+        try:
+            writer(tool=name, request=arguments, response=response_meta, duration_ms=duration_ms)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _handle_tools_call(req_id, params):
     name = (params or {}).get("name")
     arguments = (params or {}).get("arguments") or {}
@@ -172,6 +210,7 @@ def _handle_tools_call(req_id, params):
             palace_recall = _load_palace_recall()
         except Exception as e:  # noqa: BLE001
             return _err(req_id, -32603, f"failed to load palace_recall: {e}")
+        start = time.monotonic()
         try:
             result = palace_recall(
                 query=arguments["query"],
@@ -184,25 +223,40 @@ def _handle_tools_call(req_id, params):
                 repo_root=repo_root,
             )
         except Exception as e:  # noqa: BLE001
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e), "bytes": 0, "content_sha": None, "result_count": 0}, duration_ms)
             return _err(req_id, -32603, f"palace_recall raised: {e}")
-        payload = {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+        rendered = json.dumps(result, indent=2)
+        bytes_len = len(rendered.encode("utf-8"))
+        content_sha = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+        result_count = len(result) if isinstance(result, list) else 1
+        duration_ms = int((time.monotonic() - start) * 1000)
+        _emit_log(name, arguments, {"bytes": bytes_len, "content_sha": content_sha, "result_count": result_count}, duration_ms)
+        payload = {"content": [{"type": "text", "text": rendered}]}
         return _ok(req_id, payload)
 
     if name == "palace_recall_semantic":
         fn = _load_palace_recall_semantic()
+        start = time.monotonic()
         if fn is None:
-            payload = {"content": [{"type": "text", "text": "[]"}]}
-            return _ok(req_id, payload)
-        try:
-            result = fn(
-                query=arguments["query"],
-                wings=arguments.get("wings"),
-                halls=arguments.get("halls"),
-                top_k=arguments.get("top_k", 3),
-            )
-        except Exception:  # noqa: BLE001
             result = []
-        payload = {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+        else:
+            try:
+                result = fn(
+                    query=arguments["query"],
+                    wings=arguments.get("wings"),
+                    halls=arguments.get("halls"),
+                    top_k=arguments.get("top_k", 3),
+                )
+            except Exception:  # noqa: BLE001
+                result = []
+        rendered = json.dumps(result, indent=2)
+        bytes_len = len(rendered.encode("utf-8"))
+        content_sha = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+        result_count = len(result) if isinstance(result, list) else 1
+        duration_ms = int((time.monotonic() - start) * 1000)
+        _emit_log(name, arguments, {"bytes": bytes_len, "content_sha": content_sha, "result_count": result_count}, duration_ms)
+        payload = {"content": [{"type": "text", "text": rendered}]}
         return _ok(req_id, payload)
 
     return _err(req_id, -32601, f"unknown tool: {name!r}")
