@@ -24,11 +24,20 @@
 #   0  install + reindex succeeded
 #   1  fetch / clone failed
 #   2  reindex failed with chromadb present
+#
+# Artifacts:
+#   $TARGET/.petition-manifest.json  — written after each install; summarises
+#     commits since the previous install classified by the
+#     `petition: adopted|declined|pending` subject-prefix convention.
 
 set -eu
 
 REPO="https://github.com/viviane1016/honeycomb.git"
 TARGET="${HONEYCOMB_INSTALL_DIR:-$HOME/.honeycomb}"
+PREVIOUS_SHA=""
+if [ -d "$TARGET/.git" ]; then
+    PREVIOUS_SHA="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || true)"
+fi
 TAG="${HONEYCOMB_TAG:-}"   # empty = latest tag
 
 TOOL=""
@@ -101,6 +110,26 @@ print(json.dumps({
     printf '%s' "$_mat_json" \
         | python3 -c "import json,sys; [print(p) for p in json.load(sys.stdin).get('ambiguous', [])]" \
         | while IFS= read -r _p; do warn "ambiguous override: $_p"; done
+fi
+
+# ── 4. Petition manifest ──────────────────────────────────────────────────────
+CURRENT_SHA="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || echo "")"
+if [ -n "$CURRENT_SHA" ]; then
+    PREV_ARG="${PREVIOUS_SHA:-}"
+    if PETITION_SUMMARY="$(PYTHONPATH="$TARGET/lib" python3 -c "
+import sys, json
+from pathlib import Path
+from honeycomb.manifest import generate_manifest, write_manifest, summary_line
+prev = sys.argv[1] or None
+curr = sys.argv[2]
+m = generate_manifest(Path(sys.argv[3]), prev, curr)
+write_manifest(m, Path(sys.argv[3]) / '.petition-manifest.json')
+print(summary_line(m, prev))
+" "$PREV_ARG" "$CURRENT_SHA" "$TARGET")"; then
+        step "$PETITION_SUMMARY"
+    else
+        warn "petition manifest generation failed (continuing)"
+    fi
 fi
 
 # ── 4. Always reindex ────────────────────────────────────────────────────────
