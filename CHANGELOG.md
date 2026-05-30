@@ -15,6 +15,39 @@ Semver semantics:
 - **MAJOR** — closet removed or renamed, mandatory-drawer change,
   scope change, manifest restructure, breaking API contract change.
 
+## v1.1.1 — 2026-05-30
+
+### Fixed
+
+- **Overlay plumbing** — `bin/honeycomb-mcp` now passes `overlay_root` to
+  `palace_recall` and `palace_recall_semantic` dispatches. Previously the parameter
+  was accepted by the library but never threaded through from the MCP server, so the
+  overlay was silently ignored at recall time.
+- **`source` field on recall results** — result entries now carry `source: "canon"` or
+  `source: "consumer-overlay"` so callers can distinguish where each drawer came from.
+- **Log-writer import cached** — `_load_log_writer` in `bin/honeycomb-mcp` now inserts
+  `sys.path` and imports `honeycomb.log` exactly once (module-level cache); prior
+  behaviour re-ran the import on every tool call.
+- **Install no-op gate** — `tools/install.sh` skips the petition-manifest write and
+  the `Petitions:` summary print when the canon SHA has not changed. Fixes the
+  "byte-identical to v1.0" acceptance criterion for no-change installs.
+- **Duplicate section label** — renamed second `# ── 4.` in `tools/install.sh` to
+  `# ── 5.` so section numbers are monotonically increasing.
+- **`petition_id` removed** — `PetitionResult` and `PendingPetition` no longer carry
+  a date-sequenced `petition_id`. Identity is the override file's path within canon.
+  `palace_petition_withdraw` now accepts `path` instead of `petition_id`.
+  Branch names are derived deterministically from the path.
+  `palace_petition_submit` returns `{branch, pr_url, overlay_path}`.
+  `palace_petition_list` entries carry `{target, consumer, tool, tool_version,
+  path, source, rationale}`.
+
+### Backwards compatibility
+
+The frontmatter parser ignores unknown fields; any `petition_id:` lines in override
+files written by v1.1.0 are silently ignored by v1.1.1+. No migration needed.
+
+---
+
 ## v1.1.0 — 2026-05-30
 
 ### Added
