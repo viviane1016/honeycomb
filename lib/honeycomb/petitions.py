@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -170,12 +171,30 @@ def submit(
             break
 
     # 13. Mirror to overlay (unconditional on PR success).
+    #
+    # The override file alone is not enough for recall to surface the petition:
+    # recall._discover_closets skips any closet directory that lacks a
+    # `closet.md`. We mirror the canonical closet's structural files
+    # (closet.md, index.md, tunnels.md) into the overlay closet directory so
+    # _discover_closets walks it and the petition becomes immediately
+    # self-recallable. This is the load-bearing motivation of ADR-0002 —
+    # submit a petition, recall it back via palace_recall(overlay_root=...).
     overlay_path: pathlib.Path | None = None
     if overlay_root is not None:
         overlay_file = overlay_root / override_path.relative_to(hc_root)
         overlay_file.parent.mkdir(parents=True, exist_ok=True)
         overlay_file.write_text(file_content, encoding="utf-8")
         overlay_path = overlay_file
+
+        # Mirror canonical companions so the overlay closet is discoverable.
+        # Idempotent: skip companions that already exist (don't clobber prior
+        # mirrors or operator-curated overrides).
+        canon_closet_dir = override_path.parent
+        for companion in ("closet.md", "index.md", "tunnels.md"):
+            src = canon_closet_dir / companion
+            dst = overlay_file.parent / companion
+            if src.is_file() and not dst.exists():
+                shutil.copyfile(src, dst)
 
     return PetitionResult(branch=branch, pr_url=pr_url, overlay_path=overlay_path)
 

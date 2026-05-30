@@ -151,20 +151,18 @@ class TestMCPOverlayE2E(unittest.TestCase):
         self.assertNotIn("error", submit_resp,
                          f"petition submit returned error: {submit_resp}")
 
-        # Step 2: after petition creates the overlay queenfile, copy closet.md into
-        # the overlay closet dir so _discover_closets can find the closet.
-        # (petitions.submit writes the queenfile file but not closet.md; the closet.md
-        # is required by _discover_closets to recognise the directory as a valid closet.)
-        hc_closet_dir = self.hc_dir / "wing_test" / "sample-room" / "sample-closet"
+        # Step 2: assert palace_petition_submit mirrored the canonical closet.md
+        # into the overlay closet directory. Without this, _discover_closets
+        # would skip the overlay closet entirely, breaking the load-bearing
+        # "submit a petition, recall it back" guarantee of ADR-0002.
         overlay_closet_dir = (
             self.overlay_root / "wing_test" / "sample-room" / "sample-closet"
         )
         self.assertTrue(overlay_closet_dir.exists(),
                         "petition submit should have created the overlay closet dir")
-        shutil.copy(
-            str(hc_closet_dir / "closet.md"),
-            str(overlay_closet_dir / "closet.md"),
-        )
+        self.assertTrue((overlay_closet_dir / "closet.md").exists(),
+                        "petition submit must mirror canonical closet.md into the "
+                        "overlay closet directory so _discover_closets walks it")
 
         # Step 3: recall the same target via a fresh MCP spawn
         proc2 = _spawn(env)
