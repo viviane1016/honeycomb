@@ -13,7 +13,7 @@ _LIB = Path(__file__).resolve().parent.parent / "lib"
 if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
-from honeycomb.recall import palace_recall
+from honeycomb.recall import palace_recall, SOURCE_CANON, SOURCE_OVERLAY
 
 
 def _make_closet(root: Path, wing: str, room: str, closet: str, text: str) -> None:
@@ -48,6 +48,7 @@ class TestNoOverlay(unittest.TestCase):
         """Without overlay, canon closet text is returned."""
         res = palace_recall("sample", root=self.canon)
         self.assertTrue(any("canon body text" in r["closet"] for r in res))
+        self.assertTrue(all(r["source"] == SOURCE_CANON for r in res))
 
 
 class TestOverlayWins(unittest.TestCase):
@@ -70,6 +71,7 @@ class TestOverlayWins(unittest.TestCase):
         first = results[0]
         self.assertIn("overlay body", first["closet"])
         self.assertNotIn("canon body", first["closet"])
+        self.assertEqual(first["source"], SOURCE_OVERLAY)
 
 
 class TestOverlayOnlyCloset(unittest.TestCase):
@@ -91,6 +93,8 @@ class TestOverlayOnlyCloset(unittest.TestCase):
         texts = [r["closet"] for r in results]
         self.assertTrue(any("beta text" in t for t in texts),
                         f"overlay-only closet not in results: {texts}")
+        overlay_entries = [r for r in results if "beta text" in r["closet"]]
+        self.assertTrue(all(e["source"] == SOURCE_OVERLAY for e in overlay_entries))
 
 
 class TestOverlayPathMissing(unittest.TestCase):
@@ -144,6 +148,8 @@ class TestQueenfileSuffixStrip(unittest.TestCase):
                         f"queenfile overlay not returned: {texts}")
         self.assertFalse(any("canon text" in t for t in texts),
                          "canon should be replaced by queenfile overlay")
+        merged = next(r for r in results if "overlay queenfile text" in r["closet"])
+        self.assertEqual(merged["source"], SOURCE_OVERLAY)
 
 
 _CHROMADB_AVAILABLE = False
@@ -189,6 +195,8 @@ class TestSemanticOverlayMerge(unittest.TestCase):
                         f"overlay did not win in semantic results: {texts}")
         self.assertFalse(any("canon semantic body" in t for t in texts),
                          "canon entry should be replaced by overlay")
+        overlay_entry = next(r for r in results if "overlay semantic body" in r["closet"])
+        self.assertEqual(overlay_entry["source"], SOURCE_OVERLAY)
 
 
 if __name__ == "__main__":

@@ -24,11 +24,19 @@ Configuration:
   - BEES_STAGE — workflow stage written into each log record (default "unknown").
   - BEES_MODEL — model id written into each log record (default "unknown").
 
+Overlay resolution:
+  $BEES_REPO_ROOT/.bees/honeycomb-overlay/ is treated as a consumer overlay
+  tree when the directory exists; overlay drawer files win over canon at
+  matching (wing, room, closet) keys. Used identically by palace_recall,
+  palace_recall_semantic, palace_petition_submit, and palace_petition_list.
+
 Observability:
   Every palace_recall and palace_recall_semantic call appends one JSONL record
   to $BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl (dev fallback:
   $HONEYCOMB_ROOT/.calls.jsonl). Logging failures are swallowed so a broken
   log destination never prevents the MCP response from being returned.
+  The honeycomb.log writer is loaded once per process via a module-level cache;
+  subsequent MCP tool calls reuse the cached writer.
 """
 from __future__ import annotations
 
@@ -194,14 +202,18 @@ def _repo_root() -> Path:
 
 
 def _load_palace_recall():
-    sys.path.insert(0, str(_repo_root() / "lib"))
+    lib_path = str(_repo_root() / "lib")
+    if lib_path not in sys.path:
+        sys.path.insert(0, lib_path)
     from honeycomb.recall import palace_recall  # type: ignore  # noqa: WPS433
     return palace_recall
 
 
 def _load_palace_recall_semantic():
     """Lazy import — returns None if backend can't load (chromadb missing)."""
-    sys.path.insert(0, str(_repo_root() / "lib"))
+    lib_path = str(_repo_root() / "lib")
+    if lib_path not in sys.path:
+        sys.path.insert(0, lib_path)
     try:
         from honeycomb.semantic import palace_recall_semantic  # type: ignore  # noqa: WPS433
         return palace_recall_semantic
@@ -209,27 +221,43 @@ def _load_palace_recall_semantic():
         return None
 
 
+_LOG_WRITER_CACHED = False
+_LOG_WRITER = None
+
+
 def _load_log_writer():
-    """Lazy import — returns write_call_record or None if import fails."""
-    sys.path.insert(0, str(_repo_root() / "lib"))
+    """Lazy + cached import — returns write_call_record or None."""
+    global _LOG_WRITER_CACHED, _LOG_WRITER
+    if _LOG_WRITER_CACHED:
+        return _LOG_WRITER
+    lib_path = str(_repo_root() / "lib")
+    if lib_path not in sys.path:
+        sys.path.insert(0, lib_path)
     try:
         from honeycomb.log import write_call_record  # type: ignore  # noqa: WPS433
-        return write_call_record
+        _LOG_WRITER = write_call_record
     except Exception:  # noqa: BLE001
-        return None
+        _LOG_WRITER = None
+    _LOG_WRITER_CACHED = True
+    return _LOG_WRITER
 
 
 def _load_petitions():
-    sys.path.insert(0, str(_repo_root() / "lib"))
+    lib_path = str(_repo_root() / "lib")
+    if lib_path not in sys.path:
+        sys.path.insert(0, lib_path)
     from honeycomb import petitions  # type: ignore  # noqa: WPS433
     return petitions
 
 
-def _overlay_root_for_petitions() -> Path | None:
+def _overlay_root() -> Path | None:
     raw = os.environ.get("BEES_REPO_ROOT")
     if not raw:
         return None
-    return Path(raw) / ".bees" / "honeycomb-overlay"
+    result = Path(raw) / ".bees" / "honeycomb-overlay"
+    if not result.is_dir():
+        return None
+    return result
 
 
 def _to_jsonable(obj):
@@ -303,6 +331,7 @@ def _handle_tools_call(req_id, params):
     root = _repo_root()
     slug = os.environ.get("BEES_FEATURE_SLUG")
     repo_root = _bees_repo_root_for_trace()
+    overlay_root = _overlay_root()
 
     if name == "palace_recall":
         if "query" not in arguments:
@@ -322,6 +351,7 @@ def _handle_tools_call(req_id, params):
                 slug=slug,
                 root=root,
                 repo_root=repo_root,
+                overlay_root=overlay_root,
             )
         except Exception as e:  # noqa: BLE001
             duration_ms = int((time.monotonic() - start) * 1000)
@@ -350,6 +380,7 @@ def _handle_tools_call(req_id, params):
                     wings=arguments.get("wings"),
                     halls=arguments.get("halls"),
                     top_k=arguments.get("top_k", 3),
+                    overlay_root=overlay_root,
                 )
             except Exception:  # noqa: BLE001
                 result = []
@@ -370,7 +401,6 @@ def _handle_tools_call(req_id, params):
             petitions = _load_petitions()
         except Exception as e:  # noqa: BLE001
             return _err(req_id, -32603, f"failed to load petitions: {e}")
-        overlay_root = _overlay_root_for_petitions()
         start = time.monotonic()
         try:
             result = petitions.submit(
@@ -399,7 +429,6 @@ def _handle_tools_call(req_id, params):
             petitions = _load_petitions()
         except Exception as e:  # noqa: BLE001
             return _err(req_id, -32603, f"failed to load petitions: {e}")
-        overlay_root = _overlay_root_for_petitions()
         start = time.monotonic()
         try:
             result = petitions.list_pending(
