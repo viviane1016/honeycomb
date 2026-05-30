@@ -325,3 +325,34 @@ petition flow stands on. ADR-0001's H1-H8 work list expands:
 
 ADR-0001 should be updated to reference ADR-0002 and have the
 overlapping sections retitled or removed.
+
+---
+
+## Post-v1.1.0 supersession note
+
+**Petition identity is the override file path, not a date-sequenced id.**
+
+The v1.1.0 implementation shipped `petition_id` (a `YYYYMMDD-NNN-<scope>` string)
+in `PetitionResult` and `PendingPetition`, generated via `git log` date and a
+`rglob`-based counter. The retro identified this as unnecessary complexity: the
+override file's path within canon (e.g.
+`wing_bees/build/manual-amend/behaviour.queenfile_scarab.md`) is already a unique,
+stable, human-readable identity.
+
+**Changes in the v1.1.0 fixup (shipped on the `honeycomb-v1-1-fixups` branch):**
+
+- `petition_id` field removed from `PetitionResult` and `PendingPetition` dataclasses
+  in `lib/honeycomb/petitions.py`.
+- `palace_petition_withdraw` now takes `path: str` (the override file's relative path
+  within canon) instead of `petition_id`.
+- Branch names are derived deterministically from the override file path
+  (e.g. `feat/petition-<sha1(rel_path)[:12]>`); no date or counter logic.
+- `palace_petition_submit` returns `{branch, pr_url, overlay_path}` — no `petition_id`.
+- `palace_petition_list` entries carry `{target, consumer, tool, tool_version, path,
+  source, rationale}` — no `petition_id`.
+- The HTML-comment frontmatter written into override files no longer contains a
+  `petition_id:` line.
+
+**Backwards compatibility:** The frontmatter parser ignores unknown fields, so any
+`petition_id:` lines in override files written by v1.1.0 are silently ignored by
+v1.1.1+. No migration script is needed.

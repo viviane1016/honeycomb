@@ -38,7 +38,6 @@ def submit(target, content, rationale, context, *, hc_root, overlay_root=None):
     if os.environ.get("PETITION_STUB_MODE") == "error":
         raise PetitionError(os.environ.get("PETITION_STUB_ERROR", "stub error"))
     return {
-        "petition_id": "p123",
         "branch": "feat/petition-p123",
         "pr_url": "https://github.com/x/y/pull/1",
         "overlay_path": None,
@@ -52,8 +51,8 @@ def list_pending(consumer, *, hc_root, overlay_root=None):
     return []
 
 
-def withdraw(petition_id, *, hc_root):
-    _record("withdraw", {"petition_id": petition_id})
+def withdraw(path, *, hc_root):
+    _record("withdraw", {"path": path})
     if os.environ.get("PETITION_STUB_MODE") == "error":
         raise PetitionError(os.environ.get("PETITION_STUB_ERROR", "stub error"))
     return None
@@ -168,7 +167,6 @@ class TestMCPPetitions(unittest.TestCase):
         self.assertNotIn("error", call_resp, call_resp)
         text = call_resp["result"]["content"][0]["text"]
         result = json.loads(text)
-        self.assertEqual(result["petition_id"], "p123")
         self.assertEqual(result["branch"], "feat/petition-p123")
         self.assertEqual(result["pr_url"], "https://github.com/x/y/pull/1")
         self.assertIsNone(result["overlay_path"])

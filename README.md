@@ -100,7 +100,7 @@ bash ~/.honeycomb/tools/install.sh
 bash ~/.honeycomb/tools/install.sh --tool bees --tool-version v1.18 --consumer scarab
 ```
 
-After each install, a one-line petition manifest summary is printed:
+After an install that updates canon, a one-line petition manifest summary is printed:
 `Petitions: N accepted, M declined, K pending since v<prev>`.
 
 ### MCP config

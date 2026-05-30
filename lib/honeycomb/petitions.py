@@ -8,9 +8,9 @@ submit(target, content, rationale, context, *, hc_root, overlay_root=None)
 
 list_pending(consumer, *, hc_root, overlay_root=None)
     Enumerate *.queenfile_*.md overrides in canon and (optionally) an overlay.
-    Returns list[PendingPetition] sorted by petition_id.
+    Returns list[PendingPetition] sorted by path.
 
-withdraw(petition_id, *, hc_root)
+withdraw(path, *, hc_root)
     Remove the override file from its petition branch, close the PR, and
     delete the remote branch via ``gh pr close --delete-branch``.
 
@@ -22,8 +22,9 @@ Dependencies
 """
 from __future__ import annotations
 
+import hashlib
 import pathlib
-import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -36,7 +37,6 @@ class PetitionError(RuntimeError):
 
 @dataclass(frozen=True)
 class PetitionResult:
-    petition_id: str
     branch: str
     pr_url: str | None
     overlay_path: pathlib.Path | None
@@ -44,7 +44,6 @@ class PetitionResult:
 
 @dataclass(frozen=True)
 class PendingPetition:
-    petition_id: str
     target: str
     consumer: str | None
     tool: str | None
@@ -61,33 +60,14 @@ def _run(argv: list[str], *, cwd: pathlib.Path) -> subprocess.CompletedProcess:
     return result
 
 
-_COMMENT_BLOCK_RE = re.compile(r"\A\s*<!--(.*?)-->", re.DOTALL)
-_PETITION_ID_LINE_RE = re.compile(r"^\s*petition_id:\s*(.+?)\s*$", re.MULTILINE)
-
-
-def _read_petition_id(path: pathlib.Path) -> str | None:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    m = _COMMENT_BLOCK_RE.match(text)
-    if m is None:
-        return None
-    hit = _PETITION_ID_LINE_RE.search(m.group(1))
-    return hit.group(1) if hit else None
-
-
-def _scope_from_filename(filename: str) -> str:
-    sep = ".queenfile_"
-    idx = filename.find(sep)
-    if idx == -1:
-        return filename
-    after = filename[idx + len(sep):]
-    return after[:-3] if after.endswith(".md") else after
+def _branch_for_path(rel_path: str) -> str:
+    return f"feat/petition-{hashlib.sha1(rel_path.encode('utf-8')).hexdigest()[:12]}"
 
 
 def _build_override_content(
     target: str,
     scope: str,
     context: dict,
-    petition_id: str,
     rationale: str,
     content: str,
 ) -> str:
@@ -101,7 +81,6 @@ def _build_override_content(
         f"tool: {tool}\n"
         f"tool_version: {tool_version}\n"
         f"consumer: {consumer}\n"
-        f"petition_id: {petition_id}\n"
         f"rationale: |\n"
         f"{rationale_block}\n"
         f"-->\n\n"
@@ -140,20 +119,7 @@ def submit(
     else:
         raise PetitionError("petition context must include at least tool+tool_version or consumer")
 
-    # 4. Derive date from git log — deterministic, avoids datetime.now.
-    log_result = _run(["git", "log", "-1", "--format=%cI", "HEAD"], cwd=hc_root)
-    date_part = log_result.stdout.strip()[:10].replace("-", "")  # YYYYMMDD
-
-    # 5. Count existing queenfile files to compute sequence number.
-    existing_count = 0
-    for wing_dir in hc_root.glob("wing_*"):
-        existing_count += sum(1 for _ in wing_dir.rglob("*.queenfile_*.md"))
-
-    # 6. Build petition_id and branch name.
-    petition_id = f"{date_part}-{existing_count:03d}-{scope}"
-    branch = f"feat/petition-{petition_id}"
-
-    # 7. Locate canonical drawer file (not an override).
+    # 4. Locate canonical drawer file (not an override).
     canonical_matches: list[pathlib.Path] = []
     for wing_dir in hc_root.glob("wing_*"):
         for p in wing_dir.rglob(f"{target}.md"):
@@ -167,30 +133,33 @@ def submit(
 
     drawer_dir = canonical_matches[0].parent
 
-    # 8. Compute override path; guard against clobbering.
+    # 5. Compute override path; guard against clobbering.
     override_path = drawer_dir / f"{target}.queenfile_{scope}.md"
     if override_path.exists():
         raise PetitionError("override file already exists")
 
-    # 9. Checkout new branch.
+    # 6. Derive branch deterministically from the override file's relative path.
+    rel_path = str(override_path.relative_to(hc_root))
+    branch = _branch_for_path(rel_path)
+
+    # 7. Checkout new branch.
     _run(["git", "checkout", "-b", branch], cwd=hc_root)
 
-    # 10. Write override file.
-    file_content = _build_override_content(target, scope, context, petition_id, rationale, content)
+    # 8. Write override file.
+    file_content = _build_override_content(target, scope, context, rationale, content)
     override_path.write_text(file_content, encoding="utf-8")
 
-    # 11–12. Stage and commit.
-    rel_path = str(override_path.relative_to(hc_root))
+    # 9–10. Stage and commit.
     _run(["git", "add", rel_path], cwd=hc_root)
     _run(["git", "commit", "-m", f"petition: {target} for {scope}"], cwd=hc_root)
 
-    # 13. Require gh CLI.
+    # 11. Require gh CLI.
     try:
         _run(["which", "gh"], cwd=hc_root)
     except PetitionError:
         raise PetitionError("gh CLI not found")
 
-    # 14. Open PR; last non-empty stdout line is the URL.
+    # 12. Open PR; last non-empty stdout line is the URL.
     pr_result = _run(
         ["gh", "pr", "create", "--title", f"petition: {target} for {scope}", "--body", rationale],
         cwd=hc_root,
@@ -201,7 +170,15 @@ def submit(
             pr_url = line.strip()
             break
 
-    # 15. Mirror to overlay (unconditional on PR success).
+    # 13. Mirror to overlay (unconditional on PR success).
+    #
+    # The override file alone is not enough for recall to surface the petition:
+    # recall._discover_closets skips any closet directory that lacks a
+    # `closet.md`. We mirror the canonical closet's structural files
+    # (closet.md, index.md, tunnels.md) into the overlay closet directory so
+    # _discover_closets walks it and the petition becomes immediately
+    # self-recallable. This is the load-bearing motivation of ADR-0002 —
+    # submit a petition, recall it back via palace_recall(overlay_root=...).
     overlay_path: pathlib.Path | None = None
     if overlay_root is not None:
         overlay_file = overlay_root / override_path.relative_to(hc_root)
@@ -209,7 +186,17 @@ def submit(
         overlay_file.write_text(file_content, encoding="utf-8")
         overlay_path = overlay_file
 
-    return PetitionResult(petition_id, branch, pr_url, overlay_path)
+        # Mirror canonical companions so the overlay closet is discoverable.
+        # Idempotent: skip companions that already exist (don't clobber prior
+        # mirrors or operator-curated overrides).
+        canon_closet_dir = override_path.parent
+        for companion in ("closet.md", "index.md", "tunnels.md"):
+            src = canon_closet_dir / companion
+            dst = overlay_file.parent / companion
+            if src.is_file() and not dst.exists():
+                shutil.copyfile(src, dst)
+
+    return PetitionResult(branch=branch, pr_url=pr_url, overlay_path=overlay_path)
 
 
 def list_pending(
@@ -234,12 +221,7 @@ def list_pending(
                 if consumer is not None and spec.consumer != consumer and spec.consumer is not None:
                     continue
 
-                pid = _read_petition_id(p)
-                if pid is None:
-                    pid = f"unknown-{_scope_from_filename(p.name)}"
-
                 petition = PendingPetition(
-                    petition_id=pid,
                     target=spec.target,
                     consumer=spec.consumer,
                     tool=spec.tool,
@@ -257,11 +239,11 @@ def list_pending(
     if overlay_root is not None and overlay_root.exists():
         _collect(overlay_root, "overlay")
 
-    return sorted(entries.values(), key=lambda p: p.petition_id)
+    return sorted(entries.values(), key=lambda p: str(p.path))
 
 
-def withdraw(petition_id: str, *, hc_root: pathlib.Path) -> None:
-    branch = f"feat/petition-{petition_id}"
+def withdraw(path: str, *, hc_root: pathlib.Path) -> None:
+    branch = _branch_for_path(path)
 
     # Verify branch exists.
     try:
@@ -272,16 +254,9 @@ def withdraw(petition_id: str, *, hc_root: pathlib.Path) -> None:
     # Checkout the petition branch.
     _run(["git", "checkout", branch], cwd=hc_root)
 
-    # Find the override file from the tip commit.
-    diff_result = _run(
-        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
-        cwd=hc_root,
-    )
-    override_rel_path = diff_result.stdout.strip()
-
     # Remove and commit.
-    _run(["git", "rm", override_rel_path], cwd=hc_root)
-    _run(["git", "commit", "-m", f"petition: withdraw {petition_id}"], cwd=hc_root)
+    _run(["git", "rm", path], cwd=hc_root)
+    _run(["git", "commit", "-m", f"petition: withdraw {path}"], cwd=hc_root)
 
     # Close PR and delete branch.
     _run(["gh", "pr", "close", "--delete-branch", branch], cwd=hc_root)

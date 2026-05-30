@@ -2,7 +2,7 @@
 
 ### v1.1 path (primary)
 
-`palace_petition_submit` MCP tool is the direct submission path from honeycomb v1.1. The MCP server (`bin/honeycomb-mcp`) writes the override file, opens the PR via `gh`, and returns `{petition_id, branch, pr_url}`. No client-side parsing required. See `wing_bees/plan/petitions-flow/mcp-tool-emission` for full tool contracts.
+`palace_petition_submit` MCP tool is the direct submission path from honeycomb v1.1. The MCP server (`bin/honeycomb-mcp`) writes the override file, opens the PR via `gh`, and returns `{branch, pr_url, overlay_path}`. No client-side parsing required. See `wing_bees/plan/petitions-flow/mcp-tool-emission` for full tool contracts.
 
 ### Legacy translation path (one-release backwards-compat window)
 

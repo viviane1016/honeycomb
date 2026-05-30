@@ -26,13 +26,13 @@
 #   2  reindex failed with chromadb present
 #
 # Artifacts:
-#   $TARGET/.petition-manifest.json  — written after each install; summarises
-#     commits since the previous install classified by the
-#     `petition: adopted|declined|pending` subject-prefix convention.
+#   $TARGET/.petition-manifest.json  — written on first install (previous_sha=null,
+#     no summary printed) and on canon-update installs (previous_sha set, summary
+#     printed via step); skipped entirely on no-op re-runs (canon unchanged).
 
 set -eu
 
-REPO="https://github.com/viviane1016/honeycomb.git"
+REPO="${HONEYCOMB_REPO:-https://github.com/viviane1016/honeycomb.git}"
 TARGET="${HONEYCOMB_INSTALL_DIR:-$HOME/.honeycomb}"
 PREVIOUS_SHA=""
 if [ -d "$TARGET/.git" ]; then
@@ -114,7 +114,12 @@ fi
 
 # ── 4. Petition manifest ──────────────────────────────────────────────────────
 CURRENT_SHA="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || echo "")"
-if [ -n "$CURRENT_SHA" ]; then
+if [ -z "$CURRENT_SHA" ]; then
+    :  # not a git checkout — skip manifest
+elif [ -n "$PREVIOUS_SHA" ] && [ "$PREVIOUS_SHA" = "$CURRENT_SHA" ]; then
+    :  # Case A — no-op install: canon unchanged, skip entirely
+else
+    # Case B (fresh install, PREVIOUS_SHA empty) or Case C (canon updated).
     PREV_ARG="${PREVIOUS_SHA:-}"
     if PETITION_SUMMARY="$(PYTHONPATH="$TARGET/lib" python3 -c "
 import sys, json
@@ -126,13 +131,16 @@ m = generate_manifest(Path(sys.argv[3]), prev, curr)
 write_manifest(m, Path(sys.argv[3]) / '.petition-manifest.json')
 print(summary_line(m, prev))
 " "$PREV_ARG" "$CURRENT_SHA" "$TARGET")"; then
-        step "$PETITION_SUMMARY"
+        # Case C only: print summary when there is a prior SHA to compare against.
+        if [ -n "$PREVIOUS_SHA" ]; then
+            step "$PETITION_SUMMARY"
+        fi
     else
         warn "petition manifest generation failed (continuing)"
     fi
 fi
 
-# ── 4. Always reindex ────────────────────────────────────────────────────────
+# ── 5. Always reindex ────────────────────────────────────────────────────────
 # Content drift between text and DB is the single biggest correctness risk.
 # We trade a few seconds at install time for a guarantee that recall is
 # serving exactly the text we just installed.

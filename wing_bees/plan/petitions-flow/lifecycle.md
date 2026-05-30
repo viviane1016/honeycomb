@@ -8,7 +8,7 @@
 
 4. **Declined (PR closed without merge)** — Override file deleted from branch. Status moves to `declined`. Consumer overlay copy remains until the next install or explicit withdrawal.
 
-5. **Withdrawn** — `palace_petition_withdraw(petition_id)` removes the override from the canon branch, closes the PR, and removes the local overlay copy. Status moves to `withdrawn`.
+5. **Withdrawn** — `palace_petition_withdraw(path=<override-file-path>)` removes the override from the canon branch, closes the PR, and removes the local overlay copy. Status moves to `withdrawn`.
 
 ### Overlay precedence
 

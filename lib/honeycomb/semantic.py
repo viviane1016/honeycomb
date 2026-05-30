@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from typing import Iterable, Optional
 
-from honeycomb.recall import _discover_closets, _default_root, _read_drawer_text, score_match
+from honeycomb.recall import _discover_closets, _default_root, _read_drawer_text, score_match, SOURCE_CANON, SOURCE_OVERLAY
 
 log = logging.getLogger(__name__)
 
@@ -236,6 +236,7 @@ def palace_recall_semantic(
             "hall": hall,
             "path": meta.get("path"),
             "closet": meta.get("closet_text") or "",
+            "source": SOURCE_CANON,
         })
         if len(out) >= int(top_k):
             break
@@ -273,6 +274,7 @@ def palace_recall_semantic(
                     "hall": oc.get("hall"),
                     "path": str(oc["path"]),
                     "closet": oc.get("closet_text") or "",
+                    "source": SOURCE_OVERLAY,
                 }
                 if key in canon_keys:
                     out[canon_keys[key]] = overlay_entry

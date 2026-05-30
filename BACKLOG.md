@@ -21,6 +21,15 @@
 - [x] `VERSION` → 1.1.0
 - [x] `wing_bees/_manifest.yaml` version → 1.1.0
 
+## Shipped in v1.1.0 fixups
+
+- [x] `bin/honeycomb-mcp` wires `overlay_root` through `palace_recall` and `palace_recall_semantic` dispatches (spec 001)
+- [x] `_load_log_writer` cached at module level — `sys.path` insert and `honeycomb.log` import happen exactly once (spec 001)
+- [x] `source` field (`"canon"` / `"consumer-overlay"`) added to result entries in `lib/honeycomb/recall.py` and `lib/honeycomb/semantic.py` (spec 001)
+- [x] `tools/install.sh` petition-manifest block gated: no-op install skips write and print; fresh install writes manifest but does not print summary; duplicate `# ── 4.` section renumbered to `# ── 5.` (spec 002)
+- [x] `petition_id` removed from `PetitionResult`, `PendingPetition`, override-file frontmatter, and all MCP tool descriptors; `palace_petition_withdraw` now takes `path` (spec 003)
+- [x] Docs synced: ADR-0002 supersession note, `wing_bees/plan` petition docs updated, `palace-petitions/index.md` reordered, `README.md` install-summary qualified, CHANGELOG v1.1.1 entry, VERSION 1.1.1 (spec 004)
+
 ## Deferred
 
 ### v1.2 — Honey packs (ADR-0003)

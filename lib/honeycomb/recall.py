@@ -32,6 +32,9 @@ _FRONTMATTER_RE = re.compile(r"\A<!--(.*?)-->", re.DOTALL)
 _HALL_RE = re.compile(r"^\s*Hall:\s*(hall_\w+)\s*$", re.MULTILINE)
 _TAG_RE = re.compile(r"^\s*(tools|models|languages):\s*\[([^\]]*)\]\s*$", re.MULTILINE)
 
+SOURCE_CANON = "canon"
+SOURCE_OVERLAY = "consumer-overlay"
+
 
 def _parse_frontmatter(text: str) -> tuple[Optional[str], dict[str, list[str]], str]:
     """Return (hall, tags, body_after_frontmatter). hall may be None."""
@@ -307,6 +310,7 @@ def palace_recall(
                 closet_key = re.sub(r"\.queenfile_[^.]+$", "", oc["closet"])
                 if closet_key != oc["closet"]:
                     oc = dict(oc, closet=closet_key)
+                oc["_source"] = SOURCE_OVERLAY
                 key = (oc["wing"], oc["room"], oc["closet"])
                 if key in canon_index:
                     closets[canon_index[key]] = oc
@@ -344,6 +348,7 @@ def palace_recall(
             "hall": c.get("hall"),
             "path": str(c["path"]),
             "closet": c.get("closet_text") or "",
+            "source": c.get("_source", SOURCE_CANON),
         }
         if drawer:
             entry["drawer"] = _read_drawer_text(c["full_dir"])
