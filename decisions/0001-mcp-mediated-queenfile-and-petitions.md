@@ -1,7 +1,22 @@
 # ADR-0001: MCP-mediated queenfile, petition flow, and single-API access
 
 **Date:** 2026-05-30
-**Status:** Proposed
+**Status:** Proposed — partially superseded
+
+> **Supersession notes.** ADR-0002 introduces the **drawer override**
+> mechanism that replaces the YAML-block queenfile schema sketched
+> here (§ "Queenfile schema (structured)"). Under ADR-0002, petitions
+> are special-case override files (`<drawer>.queenfile_<consumer>.md`)
+> living in canon, resolved at install time. ADR-0003 adds honey
+> packs as à la carte content modules. ADR-0004 adds observability.
+>
+> The architectural intent of ADR-0001 (MCP-mediated single API
+> surface, consumer-side queenfile as overlay, petitions as the
+> consumer→canon bridge) survives unchanged. The mechanism for
+> *how* those land has shifted; affected sections are annotated
+> inline.
+>
+> Read ADR-0001 for **why**, read ADR-0002/0003/0004 for **how**.
 
 ## Context
 
@@ -121,10 +136,18 @@ palace_recall(
 ) -> [ ... ]  # results now may carry `source: "pending" | "canon"` marker
 ```
 
-### Queenfile schema (structured)
+### Queenfile schema (structured) — SUPERSEDED by ADR-0002
 
-The queenfile becomes a markdown document with YAML frontmatter blocks
-for petitions:
+> The YAML-block design below is replaced by ADR-0002's drawer-override
+> files. The queenfile-as-single-markdown-document idea persists only
+> for free-form operator notes; petitions live as
+> `<drawer>.queenfile_<consumer>.md` files in canon (added via PR) and,
+> during the open-PR window, in a consumer-side overlay. See
+> ADR-0002 §1 for the override file format and §6 for how petitions
+> collapse into overrides.
+
+Original sketch retained below for historical context:
+
 
 ```markdown
 # Project conventions for <repo>
@@ -153,7 +176,17 @@ pending petition (heuristic: identical target path + substantial
 content overlap with canon), the install script marks that petition
 adopted and removes it from the queenfile, emitting a one-line note.
 
-### Adoption detection
+### Adoption detection — SUPERSEDED by ADR-0002 + ADR-0003
+
+> Replaced by ADR-0002's install-time scope resolution and ADR-0003's
+> per-consumer petition manifest shipped with each honey pack.
+> Adoption is no longer a heuristic-matching problem at the consumer
+> side — it's a deterministic install-time output (the maintainer's
+> commit conventions + release tool produce the manifest).
+> See ADR-0002 §3.1, ADR-0003 §3 / §4.
+
+Original sketch retained below for historical context:
+
 
 Two viable heuristics:
 
@@ -304,6 +337,14 @@ Haiku-derived v1.0 closets is a separate effort that does not gate
 this release.
 
 ## Open questions — proposed resolutions
+
+> **Q1, Q2, Q4 are superseded by ADR-0002.** Under the override-file
+> model, queenfile location is "anywhere overrides live" (canon for
+> accepted, overlay for in-flight); target granularity is closet-level
+> by virtue of the file path; adoption is install-time-driven from
+> the petition manifest. The resolutions below are kept for the
+> intent they preserve, but the mechanism reference is ADR-0002/0003.
+
 
 ### Q1 — Queenfile location authority
 
