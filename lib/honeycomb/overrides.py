@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 import textwrap
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +17,8 @@ __all__ = [
     "RankedMatch",
     "rank_by_specificity",
     "resolve_overrides",
+    "ResolutionReport",
+    "materialize_flattened_view",
 ]
 
 
@@ -238,3 +241,122 @@ def resolve_overrides(
             ambiguous.append(drawer)
 
     return winners, ambiguous
+
+
+# ---------------------------------------------------------------------------
+# Flattened-view materializer
+# ---------------------------------------------------------------------------
+
+_QUEENFILE_RE = re.compile(r"^(.+)\.queenfile_.+\.md$")
+_NON_DRAWER_MD = frozenset({"closet.md", "index.md"})
+
+
+@dataclass
+class ResolutionReport:
+    materialized: list = field(default_factory=list)
+    overrides_used: dict = field(default_factory=dict)
+    canonical_kept: list = field(default_factory=list)
+    ambiguous: list = field(default_factory=list)
+    removed_overrides: list = field(default_factory=list)
+
+
+def materialize_flattened_view(
+    canon_root: Path,
+    target_root: Path,
+    context: dict,
+) -> ResolutionReport:
+    """Walk canon_root/wing_*/**/, resolve each drawer, write to target_root.
+
+    When context is empty, canonical files always win. When canon_root ==
+    target_root the tree is modified in place; queenfile_* siblings are removed
+    after each directory is resolved.
+    """
+    report = ResolutionReport()
+    in_place = canon_root.resolve() == target_root.resolve()
+
+    ctx_obj = ResolutionContext(
+        tool=context.get("tool") or None,
+        tool_version=context.get("tool_version") or None,
+        consumer=context.get("consumer") or None,
+    )
+
+    dirs_to_process: list = []
+    for wing_dir in sorted(canon_root.glob("wing_*")):
+        if not wing_dir.is_dir():
+            continue
+        dirs_to_process.append(wing_dir)
+        dirs_to_process.extend(sorted(d for d in wing_dir.rglob("*") if d.is_dir()))
+
+    for dirpath in dirs_to_process:
+        rel_dir = dirpath.relative_to(canon_root)
+        target_dir = target_root / rel_dir
+
+        if not in_place:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for mf in dirpath.glob("_manifest.yaml"):
+                shutil.copy2(mf, target_dir / mf.name)
+
+        # Group .md files by canonical drawer name
+        groups: dict = {}
+        for f in sorted(dirpath.glob("*.md")):
+            m = _QUEENFILE_RE.match(f.name)
+            if m:
+                canon_name = m.group(1) + ".md"
+                if canon_name not in groups:
+                    groups[canon_name] = {"canonical": None, "overrides": []}
+                try:
+                    groups[canon_name]["overrides"].append((parse_override_file(f), f))
+                except OverrideParseError:
+                    pass
+            else:
+                if f.name not in groups:
+                    groups[f.name] = {"canonical": None, "overrides": []}
+                groups[f.name]["canonical"] = f
+
+        # Resolve winners; empty context → canonical always wins
+        winners: dict = {}
+        if context:
+            override_candidates: dict = {
+                (rel_dir / cn).as_posix(): g["overrides"]
+                for cn, g in groups.items()
+                if cn not in _NON_DRAWER_MD and g["overrides"]
+            }
+            if override_candidates:
+                w, ambig = resolve_overrides(override_candidates, ctx_obj)
+                winners = w
+                report.ambiguous.extend(ambig)
+
+        # Write resolved files to target
+        for canon_name, group in sorted(groups.items()):
+            rel_path = (rel_dir / canon_name).as_posix()
+            target_file = target_dir / canon_name
+
+            if canon_name in _NON_DRAWER_MD:
+                if not in_place and group["canonical"] is not None:
+                    shutil.copy2(group["canonical"], target_file)
+                continue
+
+            drawer_key = rel_path
+
+            if drawer_key in winners:
+                winner_path = winners[drawer_key]
+                winner_spec = next(s for s, p in group["overrides"] if p == winner_path)
+                content = winner_spec.body.replace("\r\n", "\n").replace("\r", "\n")
+                data = content.encode("utf-8")
+                if not (in_place and target_file.exists() and target_file.read_bytes() == data):
+                    target_file.write_bytes(data)
+                report.materialized.append(rel_path)
+                report.overrides_used[rel_path] = winner_path.name
+            elif group["canonical"] is not None:
+                if not in_place:
+                    shutil.copy2(group["canonical"], target_file)
+                report.materialized.append(rel_path)
+                report.canonical_kept.append(rel_path)
+
+        # Remove queenfile_* from target directory
+        if target_dir.exists():
+            for qf in sorted(target_dir.glob("*.queenfile_*.md")):
+                report.removed_overrides.append((rel_dir / qf.name).as_posix())
+                qf.unlink()
+
+    return report
