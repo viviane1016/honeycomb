@@ -73,4 +73,4 @@ status: pending
 ---
 ```
 
-Valid path forms: `docs/adr/<name>.md` or `honeycomb/<wing>/adr-<name>.md`. The referenced file must exist on disk. The field is optional — absence is fine. Bundles carry a single `adr:` field applying to all constituents. The `adr:` field has no runtime effect; it is metadata for editorial review.
+Valid path forms: `docs/adr/<name>.md`, `decisions/<name>.md`, or `honeycomb/<wing>/adr-<name>.md`. (`decisions/` is the bees repo's own ADR home; consumer repos typically use `docs/adr/`. Both work for any repo.) The referenced file must exist on disk. The field is optional — absence is fine. Bundles carry a single `adr:` field applying to all constituents. The `adr:` field has no runtime effect; it is metadata for editorial review.
