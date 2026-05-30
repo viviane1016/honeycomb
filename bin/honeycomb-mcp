@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""honeycomb-mcp — MCP stdio server exposing palace_recall over the four-level
-wing/room/closet/drawer structure (honeycomb v1.0).
+"""honeycomb-mcp — MCP stdio server exposing palace_recall and petition tools
+over the four-level wing/room/closet/drawer structure (honeycomb v1.0).
 
 Speaks JSON-RPC 2.0 over stdin/stdout. Implements the minimal MCP handshake
 (`initialize`, `tools/list`, `tools/call`) needed for `claude -p --mcp-config`
-to discover and invoke the `palace_recall` and `palace_recall_semantic` tools.
+to discover and invoke the `palace_recall`, `palace_recall_semantic`,
+`palace_petition_submit`, `palace_petition_list`, and
+`palace_petition_withdraw` tools.
 
 Server name is `honeycomb` (not `bees-honeycomb`) so it can be registered
 alongside the legacy bees-honeycomb MCP in the same Claude session for
@@ -114,6 +116,71 @@ SEMANTIC_TOOL_DESCRIPTOR = {
     },
 }
 
+PETITION_SUBMIT_DESCRIPTOR = {
+    "name": "palace_petition_submit",
+    "description": (
+        "Write an override file (<drawer>.queenfile_<scope>.md) to a fresh "
+        "feature branch in $HONEYCOMB_ROOT and open a PR via the gh CLI. "
+        "Optionally mirrors a copy to the consumer overlay at "
+        "$BEES_REPO_ROOT/.bees/honeycomb-overlay/. "
+        "Returns {petition_id, branch, pr_url, overlay_path}. "
+        "Each call appends one JSONL record to "
+        "$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "target": {"type": "string"},
+            "content": {"type": "string"},
+            "rationale": {"type": "string"},
+            "context": {
+                "type": "object",
+                "properties": {
+                    "tool": {"type": "string"},
+                    "tool_version": {"type": "string"},
+                    "consumer": {"type": "string"},
+                },
+                "required": ["tool", "tool_version", "consumer"],
+            },
+        },
+        "required": ["target", "content", "rationale", "context"],
+    },
+}
+
+PETITION_LIST_DESCRIPTOR = {
+    "name": "palace_petition_list",
+    "description": (
+        "List pending override files across canon ($HONEYCOMB_ROOT) and the "
+        "consumer overlay ($BEES_REPO_ROOT/.bees/honeycomb-overlay/), "
+        "filtered by consumer (omit = all consumers). "
+        "Each call appends one JSONL record to "
+        "$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "consumer": {"type": "string"},
+        },
+    },
+}
+
+PETITION_WITHDRAW_DESCRIPTOR = {
+    "name": "palace_petition_withdraw",
+    "description": (
+        "Remove the override file from its petition branch and close the PR "
+        "via gh pr close --delete-branch. "
+        "Each call appends one JSONL record to "
+        "$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "petition_id": {"type": "string"},
+        },
+        "required": ["petition_id"],
+    },
+}
+
 
 def _repo_root() -> Path:
     """Resolve the honeycomb repo root.
@@ -152,6 +219,34 @@ def _load_log_writer():
         return None
 
 
+def _load_petitions():
+    sys.path.insert(0, str(_repo_root() / "lib"))
+    from honeycomb import petitions  # type: ignore  # noqa: WPS433
+    return petitions
+
+
+def _overlay_root_for_petitions() -> Path | None:
+    raw = os.environ.get("BEES_REPO_ROOT")
+    if not raw:
+        return None
+    return Path(raw) / ".bees" / "honeycomb-overlay"
+
+
+def _to_jsonable(obj):
+    """Recursively convert dataclasses and Path objects for json.dumps."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, list):
+        return [_to_jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _to_jsonable(v) for k, v in obj.items()}
+    if hasattr(obj, "__dataclass_fields__"):
+        return {k: _to_jsonable(getattr(obj, k)) for k in obj.__dataclass_fields__}
+    return obj
+
+
 # ── JSON-RPC plumbing ────────────────────────────────────────────────────────
 
 
@@ -175,7 +270,13 @@ def _handle_initialize(req_id, _params):
 
 
 def _handle_tools_list(req_id, _params):
-    return _ok(req_id, {"tools": [TOOL_DESCRIPTOR, SEMANTIC_TOOL_DESCRIPTOR]})
+    return _ok(req_id, {"tools": [
+        TOOL_DESCRIPTOR,
+        SEMANTIC_TOOL_DESCRIPTOR,
+        PETITION_SUBMIT_DESCRIPTOR,
+        PETITION_LIST_DESCRIPTOR,
+        PETITION_WITHDRAW_DESCRIPTOR,
+    ]})
 
 
 def _bees_repo_root_for_trace() -> Path | None:
@@ -199,13 +300,13 @@ def _emit_log(name, arguments, response_meta, duration_ms):
 def _handle_tools_call(req_id, params):
     name = (params or {}).get("name")
     arguments = (params or {}).get("arguments") or {}
-    if "query" not in arguments:
-        return _err(req_id, -32602, "missing required argument: query")
     root = _repo_root()
     slug = os.environ.get("BEES_FEATURE_SLUG")
     repo_root = _bees_repo_root_for_trace()
 
     if name == "palace_recall":
+        if "query" not in arguments:
+            return _err(req_id, -32602, "missing required argument: query")
         try:
             palace_recall = _load_palace_recall()
         except Exception as e:  # noqa: BLE001
@@ -236,6 +337,8 @@ def _handle_tools_call(req_id, params):
         return _ok(req_id, payload)
 
     if name == "palace_recall_semantic":
+        if "query" not in arguments:
+            return _err(req_id, -32602, "missing required argument: query")
         fn = _load_palace_recall_semantic()
         start = time.monotonic()
         if fn is None:
@@ -258,6 +361,90 @@ def _handle_tools_call(req_id, params):
         _emit_log(name, arguments, {"bytes": bytes_len, "content_sha": content_sha, "result_count": result_count}, duration_ms)
         payload = {"content": [{"type": "text", "text": rendered}]}
         return _ok(req_id, payload)
+
+    if name == "palace_petition_submit":
+        for required in ("target", "content", "rationale", "context"):
+            if required not in arguments:
+                return _err(req_id, -32602, f"missing required argument: {required}")
+        try:
+            petitions = _load_petitions()
+        except Exception as e:  # noqa: BLE001
+            return _err(req_id, -32603, f"failed to load petitions: {e}")
+        overlay_root = _overlay_root_for_petitions()
+        start = time.monotonic()
+        try:
+            result = petitions.submit(
+                target=arguments["target"],
+                content=arguments["content"],
+                rationale=arguments["rationale"],
+                context=arguments["context"],
+                hc_root=root,
+                overlay_root=overlay_root,
+            )
+        except petitions.PetitionError as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, str(e))
+        except Exception as e:  # noqa: BLE001
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, f"palace_petition_submit raised: {e}")
+        rendered = json.dumps(_to_jsonable(result), indent=2)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        _emit_log(name, arguments, {"bytes": len(rendered.encode("utf-8"))}, duration_ms)
+        return _ok(req_id, {"content": [{"type": "text", "text": rendered}]})
+
+    if name == "palace_petition_list":
+        try:
+            petitions = _load_petitions()
+        except Exception as e:  # noqa: BLE001
+            return _err(req_id, -32603, f"failed to load petitions: {e}")
+        overlay_root = _overlay_root_for_petitions()
+        start = time.monotonic()
+        try:
+            result = petitions.list_pending(
+                consumer=arguments.get("consumer"),
+                hc_root=root,
+                overlay_root=overlay_root,
+            )
+        except petitions.PetitionError as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, str(e))
+        except Exception as e:  # noqa: BLE001
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, f"palace_petition_list raised: {e}")
+        rendered = json.dumps(_to_jsonable(result), indent=2)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        _emit_log(name, arguments, {"bytes": len(rendered.encode("utf-8"))}, duration_ms)
+        return _ok(req_id, {"content": [{"type": "text", "text": rendered}]})
+
+    if name == "palace_petition_withdraw":
+        if "petition_id" not in arguments:
+            return _err(req_id, -32602, "missing required argument: petition_id")
+        try:
+            petitions = _load_petitions()
+        except Exception as e:  # noqa: BLE001
+            return _err(req_id, -32603, f"failed to load petitions: {e}")
+        start = time.monotonic()
+        try:
+            result = petitions.withdraw(
+                petition_id=arguments["petition_id"],
+                hc_root=root,
+            )
+        except petitions.PetitionError as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, str(e))
+        except Exception as e:  # noqa: BLE001
+            duration_ms = int((time.monotonic() - start) * 1000)
+            _emit_log(name, arguments, {"error": str(e)}, duration_ms)
+            return _err(req_id, -32603, f"palace_petition_withdraw raised: {e}")
+        rendered = json.dumps(_to_jsonable(result), indent=2)
+        duration_ms = int((time.monotonic() - start) * 1000)
+        _emit_log(name, arguments, {"bytes": len(rendered.encode("utf-8"))}, duration_ms)
+        return _ok(req_id, {"content": [{"type": "text", "text": rendered}]})
 
     return _err(req_id, -32601, f"unknown tool: {name!r}")
 
