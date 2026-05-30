@@ -15,6 +15,55 @@ Semver semantics:
 - **MAJOR** — closet removed or renamed, mandatory-drawer change,
   scope change, manifest restructure, breaking API contract change.
 
+## v1.1.0 — 2026-05-30
+
+### Added
+
+- **Drawer overrides** — `<drawer>.queenfile_<scope>.md` filename convention for
+  per-scope canonical-drawer variants (ADR-0002). Override files carry authoritative
+  frontmatter (`target`, `tool`, `tool_version`, `consumer`, `rationale`).
+- **Scope-aware install** — `tools/install.sh` gains `--tool`, `--tool-version`,
+  `--consumer` flags. Absent flags = canonical-only (v1.0 behaviour). When any
+  flag is supplied, the installer resolves overrides for that context and materializes
+  a flattened view before reindexing.
+- **Specificity ranking** — axes-matched > version-specificity (exact `==` beats
+  range `>=`) > consumer-specificity > mtime tiebreaker. Lint flags ambiguous
+  overlapping overrides.
+- **Petition MCP tools** — three new tools: `palace_petition_submit`,
+  `palace_petition_list`, `palace_petition_withdraw`. Petitions are override files
+  written to a feature branch in canon and opened as PRs. Optional consumer-side
+  overlay for immediate self-recall before PR merge.
+- **Consumer overlay** — `palace_recall` and `palace_recall_semantic` accept an
+  optional overlay root. `bin/honeycomb-mcp` passes
+  `$BEES_REPO_ROOT/.bees/honeycomb-overlay/` when present; overlay files win over
+  canon for matching drawer paths. Absent overlay = v1.0 behaviour.
+- **Observability log** — `lib/honeycomb/log.py` writes one JSONL record per MCP
+  tool call to `$BEES_REPO_ROOT/.bees/<slug>/mcp-calls.jsonl`. Schema v1 includes
+  `ts`, `tool`, `slug`, `actor`, `stage`, `model`, `request`, `response`,
+  `duration_ms`, `bytes`, `content_sha`. Missing actor env vars log as `"unknown"`.
+  Dev fallback: `$HONEYCOMB_ROOT/.calls.jsonl`. Concurrent-write safety via
+  `fcntl.flock`.
+- **Petition manifest** — `lib/honeycomb/manifest.py` classifies merged/declined/
+  pending petitions since the previous install by commit-message convention
+  (`petition: adopted|declined|pending`). `tools/install.sh` prints a one-line
+  summary after each pull.
+- **New content** — 9 new closets across `wing_bees/plan/` and `wing_repo_bees/`:
+  `petitions-flow`, `queenfile-contract`, updated `palace-petitions`,
+  `honeycomb-access`, `palace-recall`, `surveyor`, `honeycomb-stewards`,
+  updated `role-queen`, updated `scribe-model-tiers`.
+- **Decisions index** — `decisions/INDEX.md` listing all four ADRs.
+- **Backlog** — `BACKLOG.md` tracking shipped v1.1 items and deferred work.
+- **Actor identity env vars** — `BEES_ACTOR`, `BEES_STAGE`, `BEES_MODEL`
+  propagated into MCP log records; missing values log as `"unknown"`.
+
+### Backwards compatibility
+
+No v1.0 API removed. `palace_recall` keeps its v1.0 signature; overlay and scope
+behaviour are keyed by env / flag presence. A bees v1.17 install without override
+flags returns byte-identical results to v1.0.
+
+---
+
 ## v1.0.0 — 2026-05-29
 
 First stable release of honeycomb as an independent repository.

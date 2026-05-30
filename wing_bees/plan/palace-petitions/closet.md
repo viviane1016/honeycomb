@@ -1,8 +1,6 @@
-<!-- palace-petitions.md: migrated from petitions-format.md.
+<!-- palace-petitions.md: v1.1 — block format deprecated; MCP tool is primary.
 
 Hall: hall_protocol
-tools: [parse_palace_proposal_blocks, secret-scan]
-languages: [python]
 -->
 
-Amendment: `<<<PALACE PROPOSAL honeycomb/<wing>/<room>.md>>>…<<<END>>>` (path must exist). New-room: `<<<PALACE PROPOSAL NEW honeycomb/<wing>/<room>.md>>>…<<<END>>>` (path must NOT exist; parent wing dir must exist). Bundle: `<<<PALACE PROPOSAL BUNDLE>>>…<<<END BUNDLE>>>` (≥2 inner blocks, atomic). All shapes: optional `adr: <docs/adr/…|decisions/…|honeycomb/<wing>/adr-…>.md`. Status: `pending`→`accepted`|`declined`. Artifacts: `NNN-<room>.md` / `NNN-bundle-<stem>.md`.
+v1.1: Queens submit petitions via `palace_petition_submit` MCP tool. Legacy `<<<PALACE PROPOSAL>>>` fenced blocks are translated to MCP tool calls for one bees release post-excise-cutover; a deprecation warning is emitted on parse. Block parsing is removed in the following release. Petition = override file: `<drawer>.queenfile_<consumer>.md`. Statuses: pending → accepted | declined.

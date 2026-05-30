@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Iterable, Optional
 
-from honeycomb.recall import _discover_closets, _default_root, _read_drawer_text
+from honeycomb.recall import _discover_closets, _default_root, _read_drawer_text, score_match
 
 log = logging.getLogger(__name__)
 
@@ -181,13 +182,20 @@ def palace_recall_semantic(
     tools: Optional[Iterable[str]] = None,
     models: Optional[Iterable[str]] = None,
     project: Optional[str] = None,
+    overlay_root: Optional[Path] = None,
     db_path: Optional[Path] = None,
 ) -> list[dict]:
     """Vector recall over honeycomb closets. Returns the same shape as
     palace_recall (composite `room` field).
 
     Returns [] on any backend failure (chromadb missing, no index built,
-    query error) — callers fall through to keyword recall."""
+    query error) — callers fall through to keyword recall.
+
+    overlay_root: Optional consumer-side overlay tree; when set and existing,
+        overlay drawer files win over canon at matching (wing, room, closet)
+        keys via linear-scan keyword scoring. Absent or non-existent path =
+        canon-only (v1.0 behaviour).
+    """
     col = _get_collection(db_path)
     if col is None or not query or not str(query).strip():
         return []
@@ -231,4 +239,46 @@ def palace_recall_semantic(
         })
         if len(out) >= int(top_k):
             break
+
+    # Overlay merge: linear-scan keyword pass over overlay closets.
+    if overlay_root is not None and Path(overlay_root).is_dir():
+        overlay_closets = _discover_closets(Path(overlay_root))
+        overlay_matches: list[tuple[int, dict]] = []
+        for oc in overlay_closets:
+            if wing_filter is not None and oc["wing"] not in wing_filter:
+                continue
+            if hall_filter is not None and oc.get("hall") not in hall_filter:
+                continue
+            s = score_match(query, oc)
+            if s > 0:
+                closet_key = re.sub(r"\.queenfile_[^.]+$", "", oc["closet"])
+                if closet_key != oc["closet"]:
+                    oc = dict(oc, closet=closet_key)
+                overlay_matches.append((s, oc))
+
+        if overlay_matches:
+            # Build index from canon results: composite room -> position.
+            # composite room = "room_name/closet_name" — split on last "/"
+            canon_keys: dict[tuple, int] = {}
+            for i, item in enumerate(out):
+                parts = item["room"].rsplit("/", 1)
+                r, cl = (parts[0], parts[1]) if len(parts) == 2 else (item["room"], "")
+                canon_keys[(item["wing"], r, cl)] = i
+
+            for _s, oc in overlay_matches:
+                key = (oc["wing"], oc["room"], oc["closet"])
+                overlay_entry = {
+                    "wing": oc["wing"],
+                    "room": f"{oc['room']}/{oc['closet']}",
+                    "hall": oc.get("hall"),
+                    "path": str(oc["path"]),
+                    "closet": oc.get("closet_text") or "",
+                }
+                if key in canon_keys:
+                    out[canon_keys[key]] = overlay_entry
+                else:
+                    out.append(overlay_entry)
+
+            out = out[:max(0, int(top_k))]
+
     return out

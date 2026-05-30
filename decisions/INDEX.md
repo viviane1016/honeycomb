@@ -1,0 +1,8 @@
+# Decisions index
+
+| ADR | Title | Status | Summary |
+|---|---|---|---|
+| [ADR-0001](0001-mcp-mediated-queenfile-and-petitions.md) | MCP-mediated queenfile, petition flow, and single-API access | Partially superseded (by ADR-0002) | Establishes MCP as the single recall API surface; consumer-side queenfile as overlay; petitions as the consumer→canon PR bridge. Mechanism refined by ADR-0002; architectural intent (single API, overlay, petition flow) unchanged. Read ADR-0001 for **why**, ADR-0002/0004 for **how**. |
+| [ADR-0002](0002-drawer-overrides-scoped-indexes.md) | Drawer overrides with scope-keyed semantic indexes | Proposed — shipped in v1.1 | Collapses queenfile + petition into one mechanism: `<drawer>.queenfile_<scope>.md` override files. Install-time specificity ranking (axes-matched > version-specificity > consumer > mtime). Single ChromaDB collection over the flattened view. Consumer overlay merged at query time. |
+| [ADR-0003](0003-honey-packs.md) | Honey packs — à la carte content modules | Proposed — deferred to v1.2 | Distributable content modules letting third-party maintainers publish honeycomb wings as standalone packages, consumable alongside or instead of canon content. Deferred post-v1.1 to avoid scope creep; tracked in BACKLOG.md. |
+| [ADR-0004](0004-mcp-observability-actor-identity.md) | MCP-side observability + actor-identity logging | Proposed — shipped in v1.1 | Per-call JSONL log appended synchronously on every MCP tool invocation. Schema v1: `ts`, `tool`, `slug`, `actor`, `stage`, `model`, `request`, `response`, `duration_ms`, `bytes`, `content_sha`. Actor identity propagated via `BEES_ACTOR`, `BEES_STAGE`, `BEES_MODEL` env vars. |
