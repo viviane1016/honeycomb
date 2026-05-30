@@ -15,6 +15,7 @@ output-files:
   - wing_repo_bees/actor/role-queen/tunnels.md
   - wing_repo_bees/actor/scribe-model-tiers/closet.md
   - wing_repo_bees/actor/scribe-model-tiers/pending-petition-awareness.md
+scribe-model: claude-sonnet-4-6
 ---
 
 # Spec 012 — New + updated actor closets (4)
