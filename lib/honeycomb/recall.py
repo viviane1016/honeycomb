@@ -272,6 +272,7 @@ def palace_recall(
     tools: Optional[Iterable[str]] = None,
     models: Optional[Iterable[str]] = None,
     project: Optional[str] = None,
+    overlay_root: Optional[Path] = None,
     # Legacy side-effect parameters (trace writing):
     slug: Optional[str] = None,
     root: Optional[Path] = None,
@@ -287,9 +288,31 @@ def palace_recall(
     The `scope`, `tools`, `models`, `project` params are placeholder
     extension points for v1.1 targeted recall — currently accepted and
     ignored to keep the call signature forward-compatible.
+
+    overlay_root: Optional consumer-side overlay tree; when set and existing,
+        overlay drawer files win over canon at matching (wing, room, closet)
+        keys. Absent or non-existent path = canon-only (v1.0 behaviour).
     """
     search_root = Path(root) if root is not None else _default_root()
     closets = _discover_closets(search_root)
+
+    # Overlay merge: walk overlay tree and replace/append on (wing, room, closet).
+    if overlay_root is not None and Path(overlay_root).is_dir():
+        overlay_closets = _discover_closets(Path(overlay_root))
+        if overlay_closets:
+            canon_index: dict[tuple, int] = {}
+            for i, c in enumerate(closets):
+                canon_index[(c["wing"], c["room"], c["closet"])] = i
+            for oc in overlay_closets:
+                closet_key = re.sub(r"\.queenfile_[^.]+$", "", oc["closet"])
+                if closet_key != oc["closet"]:
+                    oc = dict(oc, closet=closet_key)
+                key = (oc["wing"], oc["room"], oc["closet"])
+                if key in canon_index:
+                    closets[canon_index[key]] = oc
+                else:
+                    closets.append(oc)
+
     if not closets:
         return []
 
