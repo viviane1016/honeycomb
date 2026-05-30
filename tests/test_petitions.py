@@ -1,5 +1,6 @@
 """Tests for honeycomb.petitions (spec 006)."""
 
+import hashlib
 import pathlib
 import subprocess
 import sys
@@ -108,6 +109,40 @@ class TestPetitionSubmit(unittest.TestCase):
         self.assertLess(checkout_idx, gh_pr_idx, "checkout must precede gh pr create")
         self.assertLess(commit_idx, gh_pr_idx, "commit must precede gh pr create")
 
+    def test_submit_omits_petition_id_and_branch_is_deterministic_from_path(self):
+        import hashlib
+        mock_run, calls = self._build_mock()
+
+        with patch.object(pet_mod, "_run", mock_run):
+            result = submit(
+                target="behaviour",
+                content="override body",
+                rationale="testing",
+                context={"tool": "bees", "tool_version": "v1.18", "consumer": None},
+                hc_root=self.hc_root,
+                overlay_root=None,
+            )
+
+        self.assertFalse(
+            hasattr(result, "petition_id"),
+            "PetitionResult must not carry a petition_id field",
+        )
+
+        override_path = (
+            self.hc_root
+            / "wing_bees" / "plan" / "foo-room" / "foo-closet"
+            / "behaviour.queenfile_bees-v1.18.md"
+        )
+        text = override_path.read_text(encoding="utf-8")
+        self.assertNotIn(
+            "petition_id:", text,
+            "override frontmatter must not contain a petition_id line",
+        )
+
+        rel = str(override_path.relative_to(self.hc_root))
+        expected_branch = f"feat/petition-{hashlib.sha1(rel.encode('utf-8')).hexdigest()[:12]}"
+        self.assertEqual(result.branch, expected_branch)
+
     def test_submit_raises_when_gh_missing(self):
         mock_run, _ = self._build_mock()
 
@@ -146,7 +181,6 @@ class TestListPending(unittest.TestCase):
         root: pathlib.Path,
         rel_path: str,
         *,
-        petition_id: str,
         target: str,
         tool: str = "null",
         tool_version: str = "null",
@@ -161,7 +195,6 @@ class TestListPending(unittest.TestCase):
             f"tool: {tool}\n"
             f"tool_version: {tool_version}\n"
             f"consumer: {consumer}\n"
-            f"petition_id: {petition_id}\n"
             f"rationale: |\n"
             f"  {rationale}\n"
             f"-->\n\n"
@@ -174,7 +207,6 @@ class TestListPending(unittest.TestCase):
         self._write_override(
             self.hc_root,
             "wing_bees/plan/foo-room/foo-closet/behaviour.queenfile_bees-v1.18.md",
-            petition_id="20260530-000-bees-v1.18",
             target="behaviour",
             tool="bees",
             tool_version="v1.18",
@@ -183,7 +215,6 @@ class TestListPending(unittest.TestCase):
         self._write_override(
             self.overlay_root,
             "wing_bees/plan/foo-room/foo-closet/other.queenfile_tool-v1.0.md",
-            petition_id="20260530-001-tool-v1.0",
             target="other",
             tool="tool",
             tool_version="v1.0",
@@ -197,10 +228,10 @@ class TestListPending(unittest.TestCase):
         self.assertEqual(len(results), 2, f"expected 2 results, got {results}")
 
         canon_entry = next(
-            (r for r in results if r.petition_id == "20260530-000-bees-v1.18"), None
+            (r for r in results if r.target == "behaviour"), None
         )
         overlay_entry = next(
-            (r for r in results if r.petition_id == "20260530-001-tool-v1.0"), None
+            (r for r in results if r.target == "other"), None
         )
 
         self.assertIsNotNone(canon_entry, "canon entry missing")
@@ -220,9 +251,10 @@ class TestWithdraw(unittest.TestCase):
         self._tmpdir.cleanup()
 
     def test_withdraw_removes_file_and_closes_pr(self):
-        petition_id = "20260530-000-bees-v1.18"
-        branch = f"feat/petition-{petition_id}"
         override_rel = "wing_bees/plan/foo-room/foo-closet/behaviour.queenfile_bees-v1.18.md"
+        expected_branch = (
+            f"feat/petition-{hashlib.sha1(override_rel.encode('utf-8')).hexdigest()[:12]}"
+        )
 
         calls = []
 
@@ -234,7 +266,7 @@ class TestWithdraw(unittest.TestCase):
             return _make_cp(argv, stdout=stdout)
 
         with patch.object(pet_mod, "_run", mock_run):
-            withdraw(petition_id=petition_id, hc_root=self.hc_root)
+            withdraw(path=override_rel, hc_root=self.hc_root)
 
         rm_calls = [a for a in calls if a[:2] == ["git", "rm"]]
         self.assertTrue(rm_calls, f"expected git rm call; got {calls}")
@@ -247,7 +279,7 @@ class TestWithdraw(unittest.TestCase):
             if a[:3] == ["gh", "pr", "close"] and "--delete-branch" in a
         ]
         self.assertTrue(gh_close_calls, f"expected gh pr close --delete-branch; got {calls}")
-        self.assertIn(branch, gh_close_calls[0])
+        self.assertIn(expected_branch, gh_close_calls[0])
 
 
 if __name__ == "__main__":
