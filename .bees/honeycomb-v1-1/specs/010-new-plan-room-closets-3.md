@@ -16,6 +16,7 @@ output-files:
   - wing_bees/plan/palace-petitions/statuses.md
   - wing_bees/plan/palace-petitions/related-decisions.md
   - wing_bees/plan/palace-petitions/migration.md
+scribe-model: claude-sonnet-4-6
 ---
 
 # Spec 010 — New plan-room closets (3)
